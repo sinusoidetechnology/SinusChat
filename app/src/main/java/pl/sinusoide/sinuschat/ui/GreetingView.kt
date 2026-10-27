@@ -22,12 +22,15 @@ class GreetingView @JvmOverloads constructor(
     private class Word(val lang: String, val text: String, val shapes: List<Path>, val bounds: RectF) {
         var strokes: List<Stroke> = emptyList()
         var writeMs = 0L
+        val separate get() = shapes.size > 4
         val cycleMs get() = writeMs + HOLD_MS + FADE_MS + GAP_MS
     }
 
     private val words = HandwritingData.WORDS.map { w ->
         val shapes = w.strokes.map { toPath(it) }
         val bounds = RectF().also { shapes.first().computeBounds(it, true) }
+        val part = RectF()
+        for (s in shapes.drop(1)) { s.computeBounds(part, true); bounds.union(part) }
         Word(w.lang, w.text, shapes, bounds)
     }
 
@@ -106,15 +109,17 @@ class GreetingView @JvmOverloads constructor(
             m.postTranslate(dx, baseline)
 
             var t = 0L
+            val separate = word.separate
             word.strokes = word.shapes.mapIndexed { i, shape ->
                 val p = Path()
                 shape.transform(m, p)
                 measure.setPath(p, false)
                 val len = measure.length
                 val units = len / scale
-                val dur = if (i == 0) (450 + units * 0.66f).toLong().coerceIn(1200, 3200)
+                val dur = if (separate) (120 + units * 1.2f).toLong()
+                else if (i == 0) (450 + units * 0.66f).toLong().coerceIn(1200, 3200)
                 else if (units < 8f) 130L else (190 + units * 1.6f).toLong()
-                val start = if (i == 0) 0L else t + 170
+                val start = if (i == 0) 0L else t + if (separate) 90 else 170
                 t = start + dur
                 Stroke(p, len, start, t)
             }
@@ -145,20 +150,26 @@ class GreetingView @JvmOverloads constructor(
             t < fadeFrom + FADE_MS -> 1f - fade.getInterpolation((t - fadeFrom) / FADE_MS.toFloat())
             else -> 0f
         }
-        pen.color = (ink and 0x00FFFFFF) or ((Color.alpha(ink) * a).toInt() shl 24)
+        pen.color = ink or 0xFF000000.toInt()
+        val layerAlpha = (Color.alpha(ink) * a).toInt()
 
-        if (a > 0f) for ((i, s) in word.strokes.withIndex()) {
-            if (t <= s.startMs) break
-            val raw = ((t - s.startMs) / (s.endMs - s.startMs).toFloat()).coerceIn(0f, 1f)
-            val k = if (i == 0) penMotion(raw) else fade.getInterpolation(raw)
-            if (k >= 1f) {
-                canvas.drawPath(s.path, pen)
-            } else if (k > 0f) {
-                measure.setPath(s.path, false)
-                piece.reset()
-                measure.getSegment(0f, s.length * k, piece, true)
-                canvas.drawPath(piece, pen)
+        if (a > 0f) {
+            val layer = if (layerAlpha < 255)
+                canvas.saveLayerAlpha(0f, 0f, width.toFloat(), height.toFloat(), layerAlpha) else -1
+            for ((i, s) in word.strokes.withIndex()) {
+                if (t <= s.startMs) break
+                val raw = ((t - s.startMs) / (s.endMs - s.startMs).toFloat()).coerceIn(0f, 1f)
+                val k = if (i == 0 && !word.separate) penMotion(raw) else fade.getInterpolation(raw)
+                if (k >= 1f) {
+                    canvas.drawPath(s.path, pen)
+                } else if (k > 0f) {
+                    measure.setPath(s.path, false)
+                    piece.reset()
+                    measure.getSegment(0f, s.length * k, piece, true)
+                    canvas.drawPath(piece, pen)
+                }
             }
+            if (layer >= 0) canvas.restoreToCount(layer)
         }
 
         when {

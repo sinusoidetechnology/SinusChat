@@ -6,9 +6,9 @@ object TranslationModels {
 
     class Part(val name: String, val sha256: String, val size: Long, val download: Long)
 
-    class Pair(val from: String, val to: String, val model: Part, val vocab: Part, val lex: Part?) {
+    class Pair(val from: String, val to: String, val model: Part, val vocab: Part, val lex: Part?, val trgVocab: Part? = null) {
         val code get() = from + to
-        val parts get() = listOfNotNull(model, vocab, lex)
+        val parts get() = listOfNotNull(model, vocab, trgVocab, lex)
     }
 
     val PAIRS: List<Pair> = listOf(
@@ -40,6 +40,16 @@ object TranslationModels {
             Part("model.deen.intgemm.alphas.bin", "3e6f7c2c2425d10824797270b382bee718ff34af2cab9308841c82ca46dc6f20", 31561787L, 22397635L),
             Part("vocab.deen.spm", "69f730becafa48e3bb2c244eab66456877c08959a02f2bd5519b5a3088b62f9c", 810073L, 413337L),
             Part("lex.50.50.deen.s2t.bin", "113b98460468360cca68c042e1cddf49c4e1931cbb975ed04349c9a3bd607010", 4945796L, 2560314L)),
+        Pair("zh", "en",
+            Part("model.zhten.intgemm.alphas.bin", "0aee91790894458f5d367551f6edcd4c9cb97852c34f221bcbf9f4701ebcf0cd", 43849787L, 33647009L),
+            Part("srcvocab.zhten.spm", "5cc6a76611dbf86219f109141533606b15ecb34eee83673bb86b2c16b14734db", 769669L, 421850L),
+            Part("lex.50.50.zhten.s2t.bin", "aa7daf6cfc85c0cd2c10e2944d66f6da55497c9c6408789f3adfded4074c2fb1", 6385944L, 3175673L),
+            Part("trgvocab.zhten.spm", "7bf002db37c10d3b114cc5588d7fdcb16c57d0fd1e2c34354c22cc9f0b6c3c29", 812572L, 407325L)),
+        Pair("en", "zh",
+            Part("model.enzht.intgemm.alphas.bin", "559ab90d723a58c1f1e2ab7cc12137bc667af5ba3e325e3eb30b5cdc930db520", 43849787L, 33286194L),
+            Part("srcvocab.enzht.spm", "2266df70492162a249ab1c0154f929bd6098b246544c666c1a0d5a24dde7d2ea", 803694L, 404211L),
+            Part("lex.50.50.enzht.s2t.bin", "d891404d1436a7334df12539fe30a26f9e9f2b80bd42fdb8b5f8849e8a1e942b", 4057188L, 2244684L),
+            Part("trgvocab.enzht.spm", "22b91a4436d70b91ab8777c677252ab5fae2bc284d71f977df5206c110e3444c", 751671L, 414783L)),
         Pair("en", "de",
             Part("model.ende.intgemm.alphas.bin", "8df29d9494d19f47fd5d97c6a73474c6f657e9f81c1a607c431d02befdf3810f", 31561787L, 22988585L),
             Part("vocab.ende.spm", "69f730becafa48e3bb2c244eab66456877c08959a02f2bd5519b5a3088b62f9c", 810073L, 413337L),

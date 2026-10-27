@@ -1996,4 +1996,5 @@
     <string name="retro_pin_repeat">Neue PIN bestätigen:</string>
     <string name="retro_login_hint">Geben Sie zum Starten Ihre PIN ein</string>
     <string name="draft_prefix">Entwurf:</string>
+    <string name="lang_chinese_trad">Traditionelles Chinesisch</string>
 </resources>

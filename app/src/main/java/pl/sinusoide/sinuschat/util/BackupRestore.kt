@@ -85,6 +85,7 @@ object BackupRestore {
             }
         }
         if (manifest.profileKey.isNotEmpty()) pl.sinusoide.sinuschat.crypto.ProfileCrypto.setMyKey(app, manifest.profileKey)
+        manifest.contactKeys?.let { pl.sinusoide.sinuschat.crypto.ProfileCrypto.importContactKeys(app, it) }
         return Result(conversations.size, messages, files, manifest.accountEmail, manifest.displayName)
     }
 

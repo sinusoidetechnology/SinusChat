@@ -220,6 +220,69 @@ object ProfileCrypto {
         AppExecutor.io { refreshContact(ctx.applicationContext, hash) }
     }
 
+    fun exportContactKeys(ctx: Context): org.json.JSONObject {
+        val out = org.json.JSONObject()
+        try {
+            for ((k, v) in prefs(ctx).all) {
+                if (k.startsWith("c_") && v is String) out.put(k.removePrefix("c_"), v)
+            }
+        } catch (_: Exception) {}
+        return out
+    }
+
+    fun importContactKeys(ctx: Context, keys: org.json.JSONObject) {
+        val app = ctx.applicationContext
+        val added = ArrayList<String>()
+        try {
+            val p = prefs(app)
+            val e = p.edit()
+            for (hash in keys.keys()) {
+                val k = keys.optString(hash)
+                val raw = try { Base64.decode(k, Base64.NO_WRAP) } catch (_: Exception) { continue }
+                if (raw.size != 32 || p.getString("c_$hash", null) != null) continue
+                e.putString("c_$hash", k)
+                added.add(hash)
+            }
+            e.commit()
+        } catch (e: Exception) { Log.w(TAG, "Klucze kontaktów z kopii: ${e.message}"); return }
+        if (added.isEmpty()) return
+        synchronized(tried) { tried.clear() }
+        AppExecutor.io { for (hash in added) refreshContact(app, hash) }
+    }
+
+    private const val ASK_EVERY_MS = 24L * 3600_000L
+
+    fun askForKey(ctx: Context, hash: String) {
+        val app = ctx.applicationContext
+        val me = SetupActivity.getUserPhoneHash(app)
+        if (hash.isEmpty() || me.isEmpty() || hash == me || contactKey(app, hash) != null) return
+        if (pl.sinusoide.sinuschat.util.BlockList.isCutOff(app, hash)) return
+        val now = System.currentTimeMillis()
+        val asked = app.getSharedPreferences(ASK_PREFS, Context.MODE_PRIVATE)
+        if (now - asked.getLong(hash, 0L) < ASK_EVERY_MS) return
+        asked.edit().putLong(hash, now).apply()
+        AppExecutor.io { pl.sinusoide.sinuschat.messenger.MessageRepository.askProfileKeyBlocking(app, me, hash) }
+    }
+
+    private const val ASK_PREFS = "profile_key_asked"
+    const val KIND_KEY_REQUEST = "pkey_req"
+    private val answered = HashMap<String, Long>()
+
+    fun onKeyRequest(ctx: Context, sender: String) {
+        val app = ctx.applicationContext
+        val me = SetupActivity.getUserPhoneHash(app)
+        if (me.isEmpty() || sender == me || pl.sinusoide.sinuschat.util.BlockList.isCutOff(app, sender)) return
+        val known = pl.sinusoide.sinuschat.util.LocalChats.contacts(app, me).contains(sender) ||
+            pl.sinusoide.sinuschat.util.GroupRoster.allMembers(app).contains(sender)
+        if (!known) return
+        val now = System.currentTimeMillis()
+        synchronized(answered) {
+            if (now - (answered[sender] ?: 0L) < 3600_000L) return
+            answered[sender] = now
+        }
+        AppExecutor.io { pl.sinusoide.sinuschat.messenger.MessageRepository.sendProfileKeyBlocking(app, me, sender) }
+    }
+
     fun renameContact(ctx: Context, oldHash: String, newHash: String) {
         try {
             val p = prefs(ctx)
@@ -277,6 +340,10 @@ object ProfileCrypto {
         if (!isEncryptedAvatar(url)) return url
         val f = plainFile(ctx, hash, url)
         if (f.exists()) return f.absolutePath
+        if (hash != SetupActivity.getUserPhoneHash(ctx) && contactKey(ctx, hash) == null) {
+            askForKey(ctx, hash)
+            return null
+        }
         val now = System.currentTimeMillis()
         synchronized(tried) {
             if (now - (tried[url] ?: 0L) < 10 * 60_000L) return null

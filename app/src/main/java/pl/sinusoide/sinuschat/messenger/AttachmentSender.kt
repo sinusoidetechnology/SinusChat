@@ -31,6 +31,8 @@ object AttachmentSender {
                val mime: String? = null, val keepOriginal: Boolean = false,
                val packed: java.io.File? = null)
 
+    class Caption(val text: String, val replyToId: String?, val replyToText: String?)
+
     class Target(
         val conversationId: String,
         val myHash: String,
@@ -59,13 +61,15 @@ object AttachmentSender {
 
     fun isActive(id: String): Boolean = states.containsKey(id)
 
-    fun send(ctx: Context, target: Target, items: List<Item>) {
+    fun send(ctx: Context, target: Target, items: List<Item>, caption: Caption? = null) {
         if (items.isEmpty()) return
         val app = ctx.applicationContext
         val albumId = if (items.count { it.kind == Kind.IMAGE && !it.viewOnce } >= 2)
             UUID.randomUUID().toString() else null
         val now = System.currentTimeMillis()
+        val captionAt = if (caption == null) -1 else items.indexOfFirst { !it.viewOnce }
         val jobs = items.mapIndexed { i, item ->
+            val withCaption = i == captionAt
             val entity = MessageEntity(
                 id = UUID.randomUUID().toString(),
                 conversationId = target.conversationId,
@@ -77,7 +81,10 @@ object AttachmentSender {
                 fileKey = null,
                 attachmentName = nameFor(app, item, now + i),
                 viewOnce = item.viewOnce,
-                albumId = if (item.kind == Kind.IMAGE && !item.viewOnce) albumId else null
+                albumId = if (item.kind == Kind.IMAGE && !item.viewOnce) albumId else null,
+                text = if (withCaption) caption!!.text else "",
+                replyToId = if (withCaption) caption!!.replyToId else null,
+                replyToText = if (withCaption) caption!!.replyToText else null
             )
             states[entity.id] = State()
             entity to item
@@ -254,6 +261,10 @@ object AttachmentSender {
             .put("fileKey", msg.fileKey)
             .put("fileName", msg.attachmentName)
         msg.albumId?.let { meta.put("albumId", it) }
+        if (msg.text.isNotBlank()) {
+            meta.put("caption", msg.text)
+            msg.replyToId?.let { meta.put("replyToId", it).put("replyToText", msg.replyToText.orEmpty()) }
+        }
         if (!msg.viewOnce) msg.attachmentName?.let { name ->
             pl.sinusoide.sinuschat.util.VideoThumbs.ensure(app, msg.conversationId, msg.id, name)
                 ?.let { pl.sinusoide.sinuschat.util.VideoThumbs.putInto(meta, it) }
@@ -276,6 +287,7 @@ object AttachmentSender {
             status = if (ok) MessageEntity.STATUS_SENT else MessageEntity.STATUS_FAILED,
             timestampMs = sentTs))
         if (ok) MessageRepository.publishRead(app, t.conversationId, t.myHash, sentTs)
+        if (ok && msg.text.isNotBlank()) GroupRepository.sendCaptionCompanionBlocking(app, msg.copy(timestampMs = sentTs))
     }
 
     private fun fail(app: Context, msg: MessageEntity, message: String, keep: Boolean = true) {

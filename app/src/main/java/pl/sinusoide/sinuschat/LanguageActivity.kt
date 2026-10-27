@@ -47,6 +47,7 @@ class LanguageActivity : AppCompatActivity() {
         "cs" -> "🇨🇿"
         "uk" -> "🇺🇦"
         "de" -> "🇩🇪"
+        LocaleManager.LANG_CHINESE_TRAD -> "🇨🇳"
         "es" -> "🇪🇸"
         "fr" -> "🇫🇷"
         "it" -> "🇮🇹"
@@ -155,7 +156,8 @@ class LanguageActivity : AppCompatActivity() {
                 LocaleManager.LANG_ENGLISH to R.string.lang_english,
                 LocaleManager.LANG_CZECH to R.string.lang_czech,
                 LocaleManager.LANG_UKRAINIAN to R.string.lang_ukrainian,
-                LocaleManager.LANG_GERMAN to R.string.lang_german
+                LocaleManager.LANG_GERMAN to R.string.lang_german,
+                LocaleManager.LANG_CHINESE_TRAD to R.string.lang_chinese_trad
             )
             for ((code, res) in languages) {
                 if (code == system) continue

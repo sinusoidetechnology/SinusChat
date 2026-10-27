@@ -151,6 +151,7 @@ object MessageRepository {
     }
 
     const val RESEND_MARK = "~r"
+    const val CAPTION_SUFFIX = "_c"
 
     fun resendBlocking(context: Context, msg: MessageEntity, sharedSecret: ByteArray, recipientHash: String) =
         pushToServer(context, msg, sharedSecret, recipientHash, resend = true)
@@ -217,7 +218,7 @@ object MessageRepository {
             pl.sinusoide.sinuschat.crypto.SignalProtocol.encrypt(context, recipientHash, it.toString().toByteArray(Charsets.UTF_8))
         }
         if (v2 != null) {
-            postMessage(context, msg, recipientHash, v2, resend)
+            if (postMessage(context, msg, recipientHash, v2, resend) && !resend) afterSent(context, msg, sharedSecret, recipientHash)
             return
         }
 
@@ -239,6 +240,11 @@ object MessageRepository {
                 put("attachmentName", msg.attachmentName ?: "Załącznik")
                 msg.albumId?.let { put("albumId", it) }
                 videoThumb(context, msg)?.let { pl.sinusoide.sinuschat.util.VideoThumbs.putInto(this, it) }
+                if (msg.text.isNotBlank()) {
+                    E2EManager.encrypt(msg.text, sharedSecret)?.let { put("encryptedCaption", it) }
+                    msg.replyToId?.let { put("replyToId", it) }
+                    msg.replyToText?.let { rt -> E2EManager.encrypt(rt, sharedSecret)?.let { put("encryptedReplyToText", it) } }
+                }
             } else if (msg.type == MessageEntity.TYPE_VOICE) {
                 val url = msg.fileId
                 if (url.isNullOrEmpty()) {
@@ -272,7 +278,43 @@ object MessageRepository {
             put("encryptedContent", encryptedContent)
         }
 
-        postMessage(context, msg, recipientHash, payloadJson, resend)
+        if (postMessage(context, msg, recipientHash, payloadJson, resend) && !resend) afterSent(context, msg, sharedSecret, recipientHash)
+    }
+
+    private fun afterSent(context: Context, msg: MessageEntity, sharedSecret: ByteArray, recipientHash: String) {
+        if (msg.type != MessageEntity.TYPE_ATTACHMENT || msg.text.isBlank() || msg.viewOnce) return
+        try { pushCaptionCompanion(context, msg, sharedSecret, recipientHash) }
+        catch (e: Exception) { Log.w(TAG, "Podpis dla starszych wersji: ${e.message}") }
+    }
+
+    private fun pushCaptionCompanion(context: Context, msg: MessageEntity, sharedSecret: ByteArray, recipientHash: String) {
+        val companion = msg.copy(id = msg.id + CAPTION_SUFFIX, type = MessageEntity.TYPE_TEXT,
+            fileId = null, fileKey = null, attachmentName = null, albumId = null)
+        val inner = signalInner(context, companion, false, capOf = msg.id) ?: return
+        val payload = pl.sinusoide.sinuschat.crypto.SignalProtocol.encrypt(
+            context, recipientHash, inner.toString().toByteArray(Charsets.UTF_8)) ?: run {
+            val content = JSONObject()
+                .put("senderHash", companion.senderHash)
+                .put("upk", pl.sinusoide.sinuschat.crypto.ProfileCrypto.myKeyB64(context))
+                .put("type", companion.type)
+                .put("timestamp", companion.timestampMs)
+                .put("capOf", msg.id)
+                .put("encryptedText", E2EManager.encrypt(companion.text, sharedSecret) ?: return)
+            companion.expiresAtMs?.let { content.put("expiresAtMs", it) }
+            companion.replyToId?.let { content.put("replyToId", it) }
+            companion.replyToText?.let { rt -> E2EManager.encrypt(rt, sharedSecret)?.let { content.put("encryptedReplyToText", it) } }
+            JSONObject()
+                .put("timestamp", companion.timestampMs)
+                .put("type", companion.type)
+                .put("encryptedContent", E2EManager.encrypt(content.toString(), sharedSecret) ?: return)
+        }
+        val body = JSONObject()
+            .put("conversationId", companion.conversationId)
+            .put("messageId", companion.id)
+            .put("kind", "msg")
+            .put("payloadB64", Base64.encodeToString(payload.toString().toByteArray(Charsets.UTF_8), Base64.NO_WRAP))
+            .put("recipientHash", recipientHash)
+        pl.sinusoide.sinuschat.crypto.SealedSender.post(context, body)
     }
 
     private fun videoThumb(context: Context, msg: MessageEntity): pl.sinusoide.sinuschat.util.VideoThumbs.Info? {
@@ -283,7 +325,7 @@ object MessageRepository {
         } catch (_: Exception) { null }
     }
 
-    private fun signalInner(context: Context, msg: MessageEntity, resend: Boolean): JSONObject? {
+    private fun signalInner(context: Context, msg: MessageEntity, resend: Boolean, capOf: String? = null): JSONObject? {
         val o = JSONObject()
             .put("senderHash", msg.senderHash)
             .put("type", msg.type)
@@ -302,6 +344,11 @@ object MessageRepository {
                     .put("attachmentName", msg.attachmentName ?: "Załącznik")
                 msg.albumId?.let { o.put("albumId", it) }
                 videoThumb(context, msg)?.let { pl.sinusoide.sinuschat.util.VideoThumbs.putInto(o, it) }
+                if (msg.text.isNotBlank()) {
+                    o.put("caption", msg.text)
+                    msg.replyToId?.let { o.put("replyToId", it) }
+                    msg.replyToText?.let { o.put("replyToText", it) }
+                }
             }
             MessageEntity.TYPE_VOICE -> {
                 if (msg.fileId.isNullOrEmpty()) {
@@ -316,6 +363,7 @@ object MessageRepository {
                 msg.replyToId?.let { o.put("replyToId", it) }
                 msg.replyToText?.let { o.put("replyToText", it) }
                 wireTranslation(msg)?.let { o.put("tr", it) }
+                capOf?.let { o.put("capOf", it) }
             }
         }
         return o
@@ -330,7 +378,7 @@ object MessageRepository {
 
     private fun postMessage(
         context: Context, msg: MessageEntity, recipientHash: String, payloadJson: JSONObject, resend: Boolean
-    ) {
+    ): Boolean {
         val payloadB64 = Base64.encodeToString(
             payloadJson.toString().toByteArray(Charsets.UTF_8), Base64.NO_WRAP
         )
@@ -358,11 +406,11 @@ object MessageRepository {
 
         if (resend) {
             if (!sent) Log.w(TAG, "Ponowna wysyłka nieudana — ${msg.id}")
-            return
+            return sent
         }
         if (!sent && BlockList.isDeleted(context, recipientHash)) {
             dao(context)?.updateStatus(msg.id, MessageEntity.STATUS_FAILED)
-            return
+            return false
         }
         if (sent) {
             val serverTs = response?.optLong("createdAt", 0L) ?: 0L
@@ -374,6 +422,7 @@ object MessageRepository {
             dao(context)?.updateStatus(msg.id, MessageEntity.STATUS_PENDING)
             scheduleRetry(context, msg.senderHash)
         }
+        return sent
     }
 
     private val retryHandler = android.os.Handler(android.os.Looper.getMainLooper())
@@ -453,6 +502,11 @@ object MessageRepository {
         sendEvent(context, conversationId(myHash, peer), pl.sinusoide.sinuschat.crypto.ProfileCrypto.KIND_KEY, payload, peer, direct)
     }
 
+    fun askProfileKeyBlocking(context: Context, myHash: String, peer: String) {
+        val payload = JSONObject().put("senderHash", myHash)
+        sendEvent(context, conversationId(myHash, peer), pl.sinusoide.sinuschat.crypto.ProfileCrypto.KIND_KEY_REQUEST, payload, peer)
+    }
+
     fun setPinned(
         context: Context,
         conversationId: String,
@@ -478,9 +532,16 @@ object MessageRepository {
         targetMessageId: String
     ) {
         AppExecutor.io {
+            val captioned = getByIdBlocking(context, targetMessageId)
+                ?.let { it.type == MessageEntity.TYPE_ATTACHMENT && it.text.isNotBlank() } == true
             deleteWithMediaBlocking(context, targetMessageId)
             val payload = JSONObject().put("senderHash", myHash).put("targetMessageId", targetMessageId)
             sendEvent(context, conversationId, "delete", payload, recipientHash)
+            if (captioned) {
+                val companion = JSONObject().put("senderHash", myHash)
+                    .put("targetMessageId", targetMessageId + CAPTION_SUFFIX)
+                sendEvent(context, conversationId, "delete", companion, recipientHash)
+            }
         }
     }
 

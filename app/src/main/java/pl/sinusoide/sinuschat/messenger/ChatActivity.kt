@@ -639,6 +639,7 @@ open class ChatActivity : AppCompatActivity() {
 
     private fun sendGroupMessage() {
         val text = inputMessage.text.toString().trim()
+        if (stagedAttachments.isNotEmpty() && takeCaption(text)) return
         if (text.isEmpty()) return
         inputMessage.text.clear()
         val reply = replyingTo
@@ -1037,8 +1038,7 @@ open class ChatActivity : AppCompatActivity() {
             if (blockedFromSending()) return@setOnClickListener
             when {
                 stagedAttachments.isNotEmpty() -> {
-                    sendStagedAttachments()
-                    if (inputMessage.text?.isNotBlank() == true) sendMessage()
+                    if (inputMessage.text?.isNotBlank() == true) sendMessage() else sendStagedAttachments()
                     refreshSendButtonIcon()
                 }
                 isShowingSend -> sendMessage()
@@ -1549,6 +1549,15 @@ open class ChatActivity : AppCompatActivity() {
         )
         recycler.layoutManager = LinearLayoutManager(this).apply { stackFromEnd = true }
         recycler.adapter = adapter
+        recycler.addItemDecoration(pl.sinusoide.sinuschat.ui.DayDividerDecoration(this) { pos ->
+            adapter.currentList.getOrNull(pos)?.timestampMs
+        })
+        adapter.registerAdapterDataObserver(object : RecyclerView.AdapterDataObserver() {
+            override fun onChanged() { recycler.post { recycler.invalidateItemDecorations() } }
+            override fun onItemRangeInserted(positionStart: Int, itemCount: Int) { recycler.post { recycler.invalidateItemDecorations() } }
+            override fun onItemRangeRemoved(positionStart: Int, itemCount: Int) { recycler.post { recycler.invalidateItemDecorations() } }
+            override fun onItemRangeMoved(fromPosition: Int, toPosition: Int, itemCount: Int) { recycler.post { recycler.invalidateItemDecorations() } }
+        })
 
         adapter.onReplyQuoteClick = { replyToId -> jumpToMessage(replyToId) }
         adapter.senderName = { hash ->
@@ -3529,7 +3538,10 @@ open class ChatActivity : AppCompatActivity() {
         draftLinkData = null
 
         if (sharedSecret == null) {
-            if (stagedAttachments.isNotEmpty()) PopupHelper.show(this, getString(R.string.loading_key_wait))
+            if (stagedAttachments.isNotEmpty()) {
+                PopupHelper.show(this, getString(R.string.loading_key_wait))
+                return
+            }
             val queued = inputMessage.text.toString().trim()
             if (queued.isEmpty()) return
             inputMessage.text.clear()
@@ -3543,7 +3555,7 @@ open class ChatActivity : AppCompatActivity() {
         val secret = sharedSecret!!
         val text = inputMessage.text.toString().trim()
 
-        if (stagedAttachments.isNotEmpty()) sendStagedAttachments()
+        if (stagedAttachments.isNotEmpty() && takeCaption(text)) return
 
         if (text.isEmpty()) return
         inputMessage.text.clear()
@@ -3976,7 +3988,22 @@ open class ChatActivity : AppCompatActivity() {
         return stream.toByteArray()
     }
 
-    private fun sendStagedAttachments() {
+    private fun takeCaption(text: String): Boolean {
+        if (text.isEmpty()) { sendStagedAttachments(); return true }
+        if (stagedAttachments.all { it.viewOnce }) { sendStagedAttachments(); return false }
+        inputMessage.text.clear()
+        val reply = replyingTo
+        cancelReply()
+        val tr = takeOutTranslation(text)
+        val group = GroupRepository.isGroup(conversationId)
+        sendStagedAttachments(AttachmentSender.Caption(
+            text = tr?.translated ?: text,
+            replyToId = reply?.id?.let { if (group) it.removeSuffix("_" + myPhoneHash.take(16)) else it },
+            replyToText = reply?.let { ReplyLabel.of(this, it) }))
+        return true
+    }
+
+    private fun sendStagedAttachments(caption: AttachmentSender.Caption? = null) {
         if (blockedFromSending()) return
         if (stagedAttachments.isEmpty()) return
         val target = sendTarget() ?: return
@@ -3990,8 +4017,8 @@ open class ChatActivity : AppCompatActivity() {
                 if (isFinishing || isDestroyed) return@main
                 val limit = pl.sinusoide.sinuschat.util.FileUploader.MAX_CONTENT
                 val fits = sized.filter { it.second <= limit }.map { stagedItem(it.first, target) }
-                if (fits.isNotEmpty()) AttachmentSender.send(this, target, fits)
-                sendOversized(target, sized.filter { it.second > limit })
+                if (fits.isNotEmpty()) AttachmentSender.send(this, target, fits, caption)
+                sendOversized(target, sized.filter { it.second > limit }, if (fits.isEmpty()) caption else null)
             }
         }
     }
@@ -4003,9 +4030,18 @@ open class ChatActivity : AppCompatActivity() {
             StagedKind.FILE -> AttachmentSender.Kind.FILE
         }, s.viewOnce && !target.isGroup, packed = packed)
 
-    private fun sendOversized(target: AttachmentSender.Target, list: List<Pair<StagedAttachment, Long>>) {
+    private fun sendOversized(
+        target: AttachmentSender.Target, list: List<Pair<StagedAttachment, Long>>,
+        caption: AttachmentSender.Caption? = null
+    ) {
         val (s, size) = list.firstOrNull() ?: return
         val rest = list.drop(1)
+        val giveBack = {
+            if (caption != null && rest.isEmpty() && !isFinishing && !isDestroyed && inputMessage.text.isNullOrBlank()) {
+                inputMessage.setText(caption.text)
+                inputMessage.setSelection(inputMessage.text.length)
+            }
+        }
         val name = AttachmentSender.displayName(this, s.uri) ?: getString(R.string.safe_this_file)
         val compression = pl.sinusoide.sinuschat.util.FileCompression
         val out = java.io.File(AttachmentSender.packedDir(this), java.util.UUID.randomUUID().toString() + ".gz")
@@ -4026,18 +4062,25 @@ open class ChatActivity : AppCompatActivity() {
                 if (isFinishing || isDestroyed || cancelled.get()) {
                     out.delete()
                     sheet.dismiss()
+                    giveBack()
                     return@main
                 }
                 if (!ok) {
                     sheet.dismiss()
                     PopupHelper.showError(this, getString(R.string.file_too_large_150))
-                    sendOversized(target, rest)
+                    giveBack()
+                    sendOversized(target, rest, caption)
                     return@main
                 }
                 sheet.ask(size, out.length()) { yes ->
-                    if (yes && !isFinishing && !isDestroyed) AttachmentSender.send(this, target, listOf(stagedItem(s, target, out)))
-                    else out.delete()
-                    sendOversized(target, rest)
+                    if (yes && !isFinishing && !isDestroyed) {
+                        AttachmentSender.send(this, target, listOf(stagedItem(s, target, out)), caption)
+                        sendOversized(target, rest)
+                    } else {
+                        out.delete()
+                        giveBack()
+                        sendOversized(target, rest, caption)
+                    }
                 }
             }
         }

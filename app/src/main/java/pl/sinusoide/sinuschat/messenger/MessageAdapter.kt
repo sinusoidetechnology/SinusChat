@@ -94,6 +94,20 @@ class MessageAdapter(
         }
     }
 
+    private fun bindCaption(holder: VH, caption: String, isMine: Boolean) {
+        val ctx = holder.itemView.context
+        val tv = holder.text ?: return
+        tv.visibility = View.VISIBLE
+        tv.autoLinkMask = android.text.util.Linkify.WEB_URLS
+        tv.linksClickable = true
+        tv.setLinkTextColor(if (isMine) Color.WHITE else pl.sinusoide.sinuschat.ui.ThemeUi.accent(ctx))
+        tv.text = caption
+        safeLinks(tv)
+        tv.textSize = 15f
+        tv.alpha = 1.0f
+        tv.movementMethod = android.text.method.LinkMovementMethod.getInstance()
+    }
+
     private fun isAlbumPart(m: MessageEntity) = m.albumId != null && m.type == MessageEntity.TYPE_ATTACHMENT &&
         !m.viewOnce && !m.isSystemMessage && MediaManager.isImage(m.attachmentName ?: "")
 
@@ -910,6 +924,11 @@ class MessageAdapter(
                 }
             }
         }
+
+        val caption = if (isViewOnce || item.type != MessageEntity.TYPE_ATTACHMENT || fileName.startsWith("location_")) null
+            else (album?.firstOrNull { it.text.isNotBlank() }?.text ?: item.text).takeIf { it.isNotBlank() }
+        holder.text?.maxWidth = if (caption != null) (246 * ctx.resources.displayMetrics.density).toInt() else Int.MAX_VALUE
+        if (caption != null) bindCaption(holder, caption, isMine)
 
         val timeStr = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(item.timestampMs))
         holder.time!!.text = timeStr

@@ -2104,4 +2104,5 @@
     <string name="retro_pin_label" translatable="false">PIN:</string>
     <string name="retro_ok" translatable="false">OK</string>
     <string name="draft_prefix">Wersja robocza:</string>
+    <string name="lang_chinese_trad">Chiński tradycyjny</string>
 </resources>

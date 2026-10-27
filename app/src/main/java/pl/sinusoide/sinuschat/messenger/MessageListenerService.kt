@@ -856,16 +856,19 @@ class MessageListenerService : Service() {
                     val meta = JSONObject(metaJson)
                     val entity = MessageEntity(
                         id = msgId, conversationId = convId, senderHash = senderHash,
-                        text = "", timestampMs = ts,
+                        text = meta.optString("caption"), timestampMs = ts,
                         status = MessageEntity.STATUS_DELIVERED,
                         type = MessageEntity.TYPE_ATTACHMENT,
                         fileId = meta.optString("fileId"),
                         fileKey = meta.optString("fileKey"),
                         attachmentName = meta.optString("fileName"),
-                        albumId = meta.optString("albumId").takeIf { it.isNotEmpty() }
+                        albumId = meta.optString("albumId").takeIf { it.isNotEmpty() },
+                        replyToId = meta.optString("replyToId").takeIf { it.isNotEmpty() },
+                        replyToText = meta.optString("replyToText").takeIf { it.isNotEmpty() }
                     )
                     pl.sinusoide.sinuschat.util.VideoThumbs.saveFromPayload(this, convId, msgId, meta.optString("fileName"), meta)
                     MessageRepository.insertIncomingMessageBlocking(this, entity)
+                    dropCaptionCopy(entity)
                     MessageRepository.publishDelivered(this, convId, myPhoneHash, ts)
                     if (currentlyOpenConversationId == convId) {
                         MessageRepository.publishRead(this, convId, myPhoneHash, ts)
@@ -942,6 +945,10 @@ class MessageListenerService : Service() {
             }
             pl.sinusoide.sinuschat.crypto.ProfileCrypto.KIND_KEY -> {
                 pl.sinusoide.sinuschat.crypto.ProfileCrypto.onKeyUpdate(this, senderHash, payload)
+                return
+            }
+            pl.sinusoide.sinuschat.crypto.ProfileCrypto.KIND_KEY_REQUEST -> {
+                if (!GroupRepository.isGroup(convId)) pl.sinusoide.sinuschat.crypto.ProfileCrypto.onKeyRequest(this, senderHash)
                 return
             }
             "reaction" -> {
@@ -1093,6 +1100,11 @@ class MessageListenerService : Service() {
                     val ts = createdAt
                     val decrypted = openGroupContent(convId, msgId, senderHash, payload, "enc", ts) ?: return
                     val side = pl.sinusoide.sinuschat.crypto.GroupKeyManager.openReply(this, convId, senderHash, payload)
+                    val capOf = side?.let { runCatching { JSONObject(it).optString("capOf") }.getOrNull() }?.takeIf { it.isNotEmpty() }
+                    if (capOf != null && hasCaption(convId, capOf)) {
+                        MessageRepository.publishDelivered(this, convId, myPhoneHash, ts)
+                        return
+                    }
                     val (replyId, replyText) = groupReply(side)
                     val tr = pl.sinusoide.sinuschat.util.Translations.parse(side)
                     val entity = MessageEntity(
@@ -1156,8 +1168,28 @@ class MessageListenerService : Service() {
         }
     }
 
+    private fun hasCaption(convId: String, attachmentId: String): Boolean {
+        val local = listOf(attachmentId, attachmentId + "_" + myPhoneHash.take(16))
+        return local.any { id ->
+            MessageRepository.getByIdBlocking(this, id)
+                ?.let { it.conversationId == convId && it.type == MessageEntity.TYPE_ATTACHMENT && it.text.isNotBlank() } == true
+        }
+    }
+
+    private fun dropCaptionCopy(entity: MessageEntity) {
+        if (entity.type != MessageEntity.TYPE_ATTACHMENT || entity.text.isBlank()) return
+        val suffix = "_" + myPhoneHash.take(16)
+        val base = entity.id.removeSuffix(suffix)
+        for (id in listOf(base + MessageRepository.CAPTION_SUFFIX, base + MessageRepository.CAPTION_SUFFIX + suffix)) {
+            MessageRepository.getByIdBlocking(this, id)
+                ?.takeIf { it.conversationId == entity.conversationId && it.type == MessageEntity.TYPE_TEXT }
+                ?.let { MessageRepository.deleteWithMediaBlocking(this, it.id) }
+        }
+    }
+
     private fun deliverIncoming(convId: String, senderHash: String, entity: MessageEntity) {
         MessageRepository.insertIncomingMessageBlocking(this, entity)
+        dropCaptionCopy(entity)
         val maxTs = entity.timestampMs
         MessageRepository.publishDelivered(this, convId, myPhoneHash, maxTs)
         if (currentlyOpenConversationId == convId) {
@@ -1237,6 +1269,12 @@ class MessageListenerService : Service() {
         if (type == "attachment") {
             fileId = src.optString("fileId").takeIf { it.isNotEmpty() }
             attachmentName = src.optString("attachmentName")
+            val encCaption = src.optString("encryptedCaption")
+            text = when {
+                plain -> src.optString("caption")
+                encCaption.isNotEmpty() && secret != null -> E2EManager.decrypt(encCaption, secret).orEmpty()
+                else -> ""
+            }
             val encKey = src.optString("encryptedFileKey")
             fileKey = when {
                 plain -> src.optString("fileKey").takeIf { it.isNotEmpty() }
@@ -1261,6 +1299,8 @@ class MessageListenerService : Service() {
                 else -> src.optString("text", "")
             }
         }
+        val capOf = src.optString("capOf").takeIf { it.isNotEmpty() && type == MessageEntity.TYPE_TEXT }
+        if (capOf != null && hasCaption(convId, capOf)) return null
         val replyToId = src.optString("replyToId").takeIf { it.isNotEmpty() }
         val encReply  = src.optString("encryptedReplyToText")
         val replyToText = when {

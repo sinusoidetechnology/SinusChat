@@ -385,11 +385,19 @@ object GroupRepository {
         return ok
     }
 
-    fun sideJson(replyId: String?, replyText: String?, translation: JSONObject?): String? {
-        if (replyId == null && translation == null) return null
+    fun sendCaptionCompanionBlocking(context: Context, msg: pl.sinusoide.sinuschat.data.MessageEntity) {
+        val side = sideJson(msg.replyToId, msg.replyToText, null, capOf = msg.id)
+        val sealed = GroupKeyManager.sealForGroup(context, msg.conversationId, msg.text, "enc", side) ?: return
+        val payload = JSONObject().put("senderHash", msg.senderHash).put("timestamp", msg.timestampMs)
+        postGroupEvent(context, msg.conversationId, msg.id + MessageRepository.CAPTION_SUFFIX, "msg", merge(payload, sealed))
+    }
+
+    fun sideJson(replyId: String?, replyText: String?, translation: JSONObject?, capOf: String? = null): String? {
+        if (replyId == null && translation == null && capOf == null) return null
         val o = JSONObject()
         replyId?.let { o.put("id", it).put("text", replyText.orEmpty()) }
         translation?.let { o.put("tr", it) }
+        capOf?.let { o.put("capOf", it) }
         return o.toString()
     }
 

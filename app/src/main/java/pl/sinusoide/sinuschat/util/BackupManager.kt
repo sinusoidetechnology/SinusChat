@@ -58,7 +58,8 @@ object BackupManager {
         val files: Int,
         val calls: Int,
         val appVersion: String,
-        val profileKey: String = ""
+        val profileKey: String = "",
+        val contactKeys: JSONObject? = null
     )
 
     fun fileName(atMs: Long): String {
@@ -105,6 +106,7 @@ object BackupManager {
                 .put("accountEmail", SetupActivity.getUserEmail(app))
                 .put("displayName", SetupActivity.getUserDisplayName(app))
                 .put("profileKey", pl.sinusoide.sinuschat.crypto.ProfileCrypto.myKeyB64(app))
+                .put("contactKeys", pl.sinusoide.sinuschat.crypto.ProfileCrypto.exportContactKeys(app))
                 .put("appVersion", appVersion(app))
                 .put("device", android.os.Build.MODEL ?: "")
                 .put("withMedia", withMedia)
@@ -173,7 +175,8 @@ object BackupManager {
             files = o.optInt("files"),
             calls = o.optInt("calls"),
             appVersion = o.optString("appVersion"),
-            profileKey = o.optString("profileKey")
+            profileKey = o.optString("profileKey"),
+            contactKeys = o.optJSONObject("contactKeys")
         )
     }
 

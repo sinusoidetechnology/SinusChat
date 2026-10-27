@@ -22,7 +22,7 @@ object Translations {
 
     private const val TAG = "Translations"
 
-    val LANGS = listOf("pl", "en", "cs", "uk", "de")
+    val LANGS = listOf("pl", "en", "cs", "uk", "de", "zh")
     const val YES = "yes"
     const val NO = "no"
     private const val MAX_TEXT = 20_000
@@ -115,13 +115,14 @@ object Translations {
         ed.apply()
     }
 
-    fun appLang(ctx: Context): String = LocaleManager.getEffective(ctx).takeIf { it in LANGS } ?: "en"
+    fun appLang(ctx: Context): String = LocaleManager.getEffective(ctx).substringBefore('-').takeIf { it in LANGS } ?: "en"
 
     fun name(ctx: Context, lang: String): String = ctx.getString(when (lang) {
         "pl" -> R.string.lang_polish
         "en" -> R.string.lang_english
         "cs" -> R.string.lang_czech
         "uk" -> R.string.lang_ukrainian
+        "zh" -> R.string.lang_chinese_trad
         else -> R.string.lang_german
     })
 
@@ -324,6 +325,8 @@ object Translations {
 
     private fun letters(text: String) = text.count { it.isLetter() }
 
+    private fun han(text: String) = text.count { Character.UnicodeScript.of(it.code) == Character.UnicodeScript.HAN }
+
     private fun words(text: String) = text.split(Regex("\\s+")).count { w -> w.count { it.isLetter() } >= 2 }
 
     fun hasLetters(text: String): Boolean {
@@ -337,7 +340,7 @@ object Translations {
 
     fun isLong(text: String): Boolean {
         val t = text.trim()
-        return letters(t) >= 8 && words(t) >= 2
+        return (letters(t) >= 8 && words(t) >= 2) || han(t) >= 4
     }
 
     fun worthTranslating(text: String): Boolean = hasLetters(text) && isLong(text)
@@ -411,7 +414,7 @@ object Translations {
                 sourceLang = from,
                 targetLang = to,
                 modelPath = file(ctx, p.model).absolutePath,
-                vocabPaths = listOf(file(ctx, p.vocab).absolutePath),
+                vocabPaths = listOfNotNull(file(ctx, p.vocab).absolutePath, p.trgVocab?.let { file(ctx, it).absolutePath }),
                 shortlistPath = file(ctx, lex).absolutePath,
                 configYaml = null,
                 numWorkers = 1))
