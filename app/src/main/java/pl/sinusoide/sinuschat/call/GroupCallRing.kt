@@ -40,13 +40,14 @@ object GroupCallRing {
 
     fun groupAvatar(context: Context, groupId: String): Pair<String, String?> {
         var color = "#5288C1"
-        var url = ContactCache.getAvatarUrl(context, groupId)?.takeIf { it.startsWith("http") }
+        var url = ContactCache.getAvatarUrl(context, groupId)?.takeIf { it.startsWith("http") || it.startsWith("/") }
         val arr = pl.sinusoide.sinuschat.util.ConversationCache.load(context) ?: return color to url
         for (i in 0 until arr.length()) {
             val o = arr.optJSONObject(i) ?: continue
             if (o.optString("id") != groupId) continue
             o.optString("group_avatar_color").takeIf { it.startsWith("#") }?.let { color = it }
             if (url == null) url = o.optString("avatar_url").takeIf { it.startsWith("http") }
+                ?.let { pl.sinusoide.sinuschat.crypto.ProfileCrypto.displayAvatar(context, groupId, it) }
             break
         }
         return color to url

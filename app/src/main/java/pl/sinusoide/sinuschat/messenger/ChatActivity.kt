@@ -602,7 +602,7 @@ open class ChatActivity : AppCompatActivity() {
                 else android.graphics.Color.parseColor("#9B9B9B"))
             toolbarStatus.visibility = View.VISIBLE
             toolbarAvatarImage?.let { img ->
-                pl.sinusoide.sinuschat.util.AvatarHelper.loadGroupAvatar(this, img, info.name, info.avatarColor, info.avatarUrl)
+                pl.sinusoide.sinuschat.util.AvatarHelper.loadGroupAvatar(this, img, info.name, info.avatarColor, info.avatarUrl, groupId = conversationId)
                 img.visibility = View.VISIBLE
                 toolbarAvatar.visibility = View.GONE
             }
@@ -673,52 +673,57 @@ open class ChatActivity : AppCompatActivity() {
             trTo           = tr?.to
         )
 
-        AppExecutor.io {
-            val db = pl.sinusoide.sinuschat.data.SinusChatDatabase.getInstance(this)
-            db.messageDao().insert(entity)
+        AppExecutor.local {
+            pl.sinusoide.sinuschat.data.SinusChatDatabase.getInstance(this).messageDao().insert(entity)
             MessageRepository.claim(msgId)
+            AppExecutor.send { sendGroupTextClaimed(entity, body, replyJson) }
+        }
+    }
 
-            val sealed = pl.sinusoide.sinuschat.crypto.GroupKeyManager.sealForGroup(
-                this, conversationId, body, "enc", replyJson)
+    private fun sendGroupTextClaimed(entity: pl.sinusoide.sinuschat.data.MessageEntity, text: String, replyJson: String?) {
+        val msgId = entity.id
+        val now = entity.timestampMs
+        val db = pl.sinusoide.sinuschat.data.SinusChatDatabase.getInstance(this)
+        val sealed = pl.sinusoide.sinuschat.crypto.GroupKeyManager.sealForGroup(
+            this, conversationId, text, "enc", replyJson)
 
-            val payloadJson = org.json.JSONObject()
-                .put("senderHash", myPhoneHash)
-                .put("timestamp", now)
-            if (sealed == null) {
-                MessageRepository.release(msgId)
-                db.messageDao().updateStatus(msgId, pl.sinusoide.sinuschat.data.MessageEntity.STATUS_FAILED)
-                return@io
-            }
-            GroupRepository.merge(payloadJson, sealed)
-            val payloadB64 = android.util.Base64.encodeToString(
-                payloadJson.toString().toByteArray(Charsets.UTF_8),
-                android.util.Base64.NO_WRAP
-            )
-
-            val body = org.json.JSONObject().apply {
-                put("conversationId", conversationId)
-                put("messageId", msgId)
-                put("kind", "msg")
-                put("payloadB64", payloadB64)
-            }
-
-            val result = ApiClient.post("/api/message", body, this)
+        val payloadJson = org.json.JSONObject()
+            .put("senderHash", myPhoneHash)
+            .put("timestamp", now)
+        if (sealed == null) {
             MessageRepository.release(msgId)
-            if (result == null) MessageRepository.scheduleRetry(this, myPhoneHash)
-            val sentTs = GroupRepository.serverTime(result)
-            sentTs?.let { db.messageDao().updateTimestamp(msgId, it) }
-            val newStatus = if (result != null)
-                pl.sinusoide.sinuschat.data.MessageEntity.STATUS_SENT
-            else
-                pl.sinusoide.sinuschat.data.MessageEntity.STATUS_PENDING
+            db.messageDao().updateStatus(msgId, pl.sinusoide.sinuschat.data.MessageEntity.STATUS_FAILED)
+            return
+        }
+        GroupRepository.merge(payloadJson, sealed)
+        val payloadB64 = android.util.Base64.encodeToString(
+            payloadJson.toString().toByteArray(Charsets.UTF_8),
+            android.util.Base64.NO_WRAP
+        )
 
-            db.messageDao().updateStatus(msgId, newStatus)
+        val body = org.json.JSONObject().apply {
+            put("conversationId", conversationId)
+            put("messageId", msgId)
+            put("kind", "msg")
+            put("payloadB64", payloadB64)
+        }
 
-            val readTs = sentTs ?: now
-            if (readTs > lastPublishedReadMs) {
-                lastPublishedReadMs = readTs
-                MessageRepository.publishRead(this, conversationId, myPhoneHash, readTs)
-            }
+        val result = ApiClient.post("/api/message", body, this)
+        MessageRepository.release(msgId)
+        if (result == null) MessageRepository.scheduleRetry(this, myPhoneHash)
+        val sentTs = GroupRepository.serverTime(result)
+        sentTs?.let { db.messageDao().updateTimestamp(msgId, it) }
+        val newStatus = if (result != null)
+            pl.sinusoide.sinuschat.data.MessageEntity.STATUS_SENT
+        else
+            pl.sinusoide.sinuschat.data.MessageEntity.STATUS_PENDING
+
+        db.messageDao().updateStatus(msgId, newStatus)
+
+        val readTs = sentTs ?: now
+        if (readTs > lastPublishedReadMs) {
+            lastPublishedReadMs = readTs
+            MessageRepository.publishRead(this, conversationId, myPhoneHash, readTs)
         }
     }
 
@@ -1312,7 +1317,8 @@ open class ChatActivity : AppCompatActivity() {
                 pl.sinusoide.sinuschat.util.AvatarHelper.loadGroupAvatar(this, it,
                     otherUserName.ifEmpty { pl.sinusoide.sinuschat.util.ContactCache.getName(this, conversationId) ?: "Grupa" },
                     groupColor,
-                    pl.sinusoide.sinuschat.util.ContactCache.getAvatarUrl(this, conversationId))
+                    pl.sinusoide.sinuschat.util.ContactCache.getAvatarUrl(this, conversationId),
+                    groupId = conversationId)
             }
         }
 
@@ -4812,7 +4818,7 @@ open class ChatActivity : AppCompatActivity() {
             timestampMs = System.currentTimeMillis(), type = "sys_key_change",
             isSystemMessage = true, status = MessageEntity.STATUS_READ
         )
-        AppExecutor.io { pl.sinusoide.sinuschat.data.SinusChatDatabase.getInstance(this).messageDao().insert(entity) }
+        AppExecutor.local { pl.sinusoide.sinuschat.data.SinusChatDatabase.getInstance(this).messageDao().insert(entity) }
     }
 
     private fun notifyScreenshotAttempt() {
@@ -4877,7 +4883,7 @@ open class ChatActivity : AppCompatActivity() {
             text = text, timestampMs = System.currentTimeMillis(), type = type,
             isSystemMessage = true, status = MessageEntity.STATUS_READ
         )
-        AppExecutor.io { pl.sinusoide.sinuschat.data.SinusChatDatabase.getInstance(this).messageDao().insert(entity) }
+        AppExecutor.local { pl.sinusoide.sinuschat.data.SinusChatDatabase.getInstance(this).messageDao().insert(entity) }
     }
 
     private fun loadDisappearingTtl() {

@@ -89,7 +89,7 @@ object AttachmentSender {
             states[entity.id] = State()
             entity to item
         }
-        AppExecutor.io { jobs.forEach { dao(app).insert(it.first) } }
+        AppExecutor.local { jobs.forEach { dao(app).insert(it.first) } }
         for ((entity, item) in jobs) queue.execute { process(app, target, entity, item.uri, item.kind, item.keepOriginal, item.packed) }
     }
 
@@ -160,7 +160,7 @@ object AttachmentSender {
             return
         }
         states[msg.id] = State()
-        AppExecutor.io { dao(app).updateStatus(msg.id, MessageEntity.STATUS_UPLOADING) }
+        AppExecutor.local { dao(app).updateStatus(msg.id, MessageEntity.STATUS_UPLOADING) }
         queue.execute { process(app, target, msg.copy(status = MessageEntity.STATUS_UPLOADING), null, kindOf(name)) }
     }
 

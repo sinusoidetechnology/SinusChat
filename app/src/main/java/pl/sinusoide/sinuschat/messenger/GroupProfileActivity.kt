@@ -309,7 +309,7 @@ class GroupProfileActivity : AppCompatActivity() {
             amIAdmin = info.amIAdmin
             currentAvatarUrl = info.avatarUrl
             AvatarHelper.loadGroupAvatar(this, avatarView, info.name, info.avatarColor,
-                info.avatarUrl, (110 * dp).toInt())
+                info.avatarUrl, (110 * dp).toInt(), groupId)
             nameView.text = info.name
             subtitleView.text = getString(R.string.group_members_count, info.members.size)
             currentMemberHashes.clear()
@@ -770,7 +770,7 @@ class GroupProfileActivity : AppCompatActivity() {
                     if (newUrl != null) currentAvatarUrl = newUrl.ifEmpty { null }
                     nameView.text = newName
                     AvatarHelper.loadGroupAvatar(this, avatarView, newName, color,
-                        currentAvatarUrl, (110 * dp).toInt())
+                        currentAvatarUrl, (110 * dp).toInt(), groupId)
                     pl.sinusoide.sinuschat.util.ContactCache.saveName(this, groupId, newName)
                     pl.sinusoide.sinuschat.util.ContactCache.saveAvatarUrl(this, groupId, currentAvatarUrl)
                     AvatarHelper.setContactColor(this, groupId, color)
@@ -786,7 +786,8 @@ class GroupProfileActivity : AppCompatActivity() {
             when {
                 photoToUpload != null ->
                     uploadedUrl?.let { commit(it) }
-                        ?: pl.sinusoide.sinuschat.util.FileUploader.uploadGroupAvatarAsync(this, photoToUpload) { url ->
+                        ?: pl.sinusoide.sinuschat.util.FileUploader.uploadGroupAvatarAsync(this, photoToUpload,
+                            pl.sinusoide.sinuschat.crypto.GroupMeta.profileKey(this, groupId)) { url ->
                             if (url.isNullOrEmpty()) { fail(); return@uploadGroupAvatarAsync }
                             uploadedUrl = url
                             commit(url)

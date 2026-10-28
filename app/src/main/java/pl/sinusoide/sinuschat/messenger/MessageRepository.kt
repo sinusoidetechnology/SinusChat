@@ -77,9 +77,9 @@ object MessageRepository {
             trFrom = translation?.from,
             trTo = translation?.to
         )
-        AppExecutor.io {
+        AppExecutor.local {
             dao(context)?.insert(entity)
-            pushToServer(context, entity, sharedSecret, otherHash)
+            AppExecutor.send { pushToServer(context, entity, sharedSecret, otherHash) }
         }
     }
 
@@ -107,9 +107,9 @@ object MessageRepository {
             trTo = translation?.to
         )
         val app = context.applicationContext
-        AppExecutor.io {
+        AppExecutor.local {
             dao(app)?.insert(entity)
-            retryPendingOutgoing(app, myHash)
+            AppExecutor.send { retryPendingOutgoing(app, myHash) }
         }
     }
 
@@ -139,9 +139,9 @@ object MessageRepository {
         localFile?.let {
             try { it.copyTo(MediaManager.voiceCacheFile(context, entity.id), overwrite = true) } catch (_: Exception) {}
         }
-        AppExecutor.io {
+        AppExecutor.local {
             dao(context)?.insert(entity)
-            pushToServer(context, entity, sharedSecret, otherHash)
+            AppExecutor.send { pushToServer(context, entity, sharedSecret, otherHash) }
         }
     }
 

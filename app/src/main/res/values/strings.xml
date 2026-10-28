@@ -108,6 +108,12 @@
     <string name="safe_backup_title">SinusChat chce połączyć się z Dyskiem Google</string>
     <string name="safe_backup_msg">Kopia zapasowa trafi na serwery Google. Jest zaszyfrowana, więc Google nie odczyta jej treści, ale zobaczy jej rozmiar i czas utworzenia. Sinusoide nie chroni danych po wyjściu poza SinusChat. Czy chcesz kontynuować?</string>
     <string name="safe_backup_action">Połącz</string>
+    <string name="safe_tor_model_title">Pobieranie bez Tora</string>
+    <string name="safe_tor_model_msg">Modele Sinii pobierają się bezpośrednio, z pominięciem Tora, bo nasz serwer plików nie przyjmuje ruchu z sieci Tor. Serwer zobaczy Twój prawdziwy adres IP.</string>
+    <string name="safe_tor_model_action">Pobierz</string>
+    <string name="safe_tor_call_title">Rozmowa bez Tora</string>
+    <string name="safe_tor_call_msg">Rozmów na żywo nie da się przesłać przez Tor. Rozmówca nie zobaczy Twojego adresu IP, ale nasz serwer połączeń tak.</string>
+    <string name="safe_tor_call_action">Kontynuuj</string>
     <string name="safe_why_title">Dlaczego widzę to powiadomienie?</string>
     <string name="safe_why_msg">Możliwe, że to potencjalne zagrożenie, lecz nie musi nim być. Sinusoide chce, aby SinusChat było bezpieczne, dlatego informuje Cię o sytuacji, która ma się zdarzyć. Zachowaj szczególną ostrożność, widząc to powiadomienie. Możesz je wyłączyć w Ustawienia → Powiadomienia → Informuj o potencjalnym zagrożeniu.</string>
     <string name="safe_several_files">kilka plików</string>
@@ -1278,6 +1284,8 @@
     <string name="msg_expired_group_none">Wiadomość nie została dostarczona — żadna osoba z grupy nie pobrała jej w ciągu 24 godzin, a serwer nie przechowuje wiadomości dłużej.</string>
     <string name="media_gone">Treść została usunięta z serwera po 24 godzinach. Poproś o ponowne wysłanie.</string>
     <string name="media_gone_short">Usunięto z serwera po 24 h</string>
+    <string name="media_gone_recent">Tego pliku nie ma już na serwerze. Poproś o ponowne wysłanie.</string>
+    <string name="media_gone_recent_short">Brak pliku na serwerze</string>
     <string name="resend_message">Wyślij ponownie</string>
     <string name="resend_failed">Części wiadomości nie udało się wysłać ponownie — nie ma już ich pliku na tym telefonie.</string>
     <string name="msg_expired_private_many">Te wiadomości nie zostały dostarczone — odbiorca nie pobrał ich w ciągu 24 godzin, a serwer nie przechowuje wiadomości dłużej.</string>

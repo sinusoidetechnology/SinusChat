@@ -65,14 +65,19 @@ object GroupInviteManager {
         AppExecutor.io {
             val (status, json) = get(app, "/api/group-invite/$code")
             val result: Result<Preview> = if (status in 200..299 && json?.optBoolean("ok") == true) {
+                val groupId = json.optString("groupId").takeIf { it.startsWith("g_") }
+                val rawAvatar = json.optString("avatarUrl").takeIf { it.isNotEmpty() && it != "null" }
+                val avatar = if (pl.sinusoide.sinuschat.crypto.ProfileCrypto.isEncryptedAvatar(rawAvatar))
+                    key?.let { pl.sinusoide.sinuschat.crypto.ProfileCrypto.fetchAvatar(app, groupId ?: "g_$code", rawAvatar!!, it) }
+                else rawAvatar
                 Result.Ok(Preview(
                     name = clean(pl.sinusoide.sinuschat.crypto.GroupMeta.openWith(key, json.optString("name"))).ifEmpty { app.getString(R.string.type_community) },
                     description = clean(pl.sinusoide.sinuschat.crypto.GroupMeta.openWith(key, json.optString("description")), 300),
                     avatarColor = json.optString("avatarColor", "#5288C1"),
-                    avatarUrl = json.optString("avatarUrl").takeIf { it.isNotEmpty() && it != "null" },
+                    avatarUrl = avatar,
                     memberCount = json.optInt("memberCount"),
                     alreadyMember = json.optBoolean("alreadyMember"),
-                    groupId = json.optString("groupId").takeIf { it.startsWith("g_") }
+                    groupId = groupId
                 ))
             } else Result.Error(errorCode(status, json))
             AppExecutor.main { onDone(result) }

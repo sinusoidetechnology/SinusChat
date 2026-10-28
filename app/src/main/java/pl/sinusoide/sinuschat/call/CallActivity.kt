@@ -282,6 +282,14 @@ class CallActivity : AppCompatActivity() {
     }
 
     private fun startCall() {
+        pl.sinusoide.sinuschat.util.SafeEngine.guardTor(this, pl.sinusoide.sinuschat.util.SafeEngine.Risk.TOR_CALL,
+            onCancel = {
+                if (isCaller) { callEnded = true; systemLogged = true; finish() } else endCall()
+            }
+        ) { if (!isFinishing && !isDestroyed) startCallConfirmed() }
+    }
+
+    private fun startCallConfirmed() {
         if (!isCaller && CallNotifier.isCancelled(conversationId)) {
             systemLogged = true
             showEnd(R.string.call_peer_hung_up)

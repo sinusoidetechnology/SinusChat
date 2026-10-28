@@ -367,6 +367,15 @@ class GroupCallActivity : AppCompatActivity() {
     }
 
     private fun startSession() {
+        pl.sinusoide.sinuschat.util.SafeEngine.guardTor(this, pl.sinusoide.sinuschat.util.SafeEngine.Risk.TOR_CALL,
+            onCancel = {
+                GroupCallRing.stop(applicationContext, groupId)
+                finish()
+            }
+        ) { if (!isFinishing && !isDestroyed && session == null) startSessionConfirmed() }
+    }
+
+    private fun startSessionConfirmed() {
         if (!CallNetwork.online(this)) { showOffline(); return }
         GroupCallRing.stop(applicationContext, groupId)
         hideIncoming()
@@ -395,7 +404,7 @@ class GroupCallActivity : AppCompatActivity() {
             info.members.forEach { m -> if (m.displayName.isNotBlank() && !m.displayName.startsWith("p1:")) names[m.userHash] = m.displayName }
             if (info.name.isNotBlank()) groupTitle = info.name
             groupColor = info.avatarColor.ifBlank { groupColor }
-            groupAvatarUrl = info.avatarUrl?.takeIf { it.startsWith("http") } ?: groupAvatarUrl
+            groupAvatarUrl = info.avatarUrl?.takeIf { it.startsWith("http") || it.startsWith("/") } ?: groupAvatarUrl
             tvName.text = groupTitle
             loadGroupPhoto(waitAvatar.imageView(), (160 * dp).toInt())
             incomingAvatar?.let { loadGroupPhoto(it, (150 * dp).toInt()) }
@@ -411,7 +420,7 @@ class GroupCallActivity : AppCompatActivity() {
         else ContactCache.getNick(this, hash) ?: names[hash] ?: ContactCache.getName(this, hash) ?: getString(R.string.caller_unknown)
 
     private fun loadGroupPhoto(img: ImageView, size: Int) {
-        AvatarHelper.loadGroupAvatar(this, img, groupTitle, groupColor, groupAvatarUrl, size)
+        AvatarHelper.loadGroupAvatar(this, img, groupTitle, groupColor, groupAvatarUrl, size, groupId)
     }
 
     private fun loadPersonPhoto(img: ImageView, hash: String, size: Int) {

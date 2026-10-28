@@ -12,6 +12,7 @@ import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 
 object FileUploader {
@@ -290,8 +291,9 @@ object FileUploader {
             val hdrs = mapOf("X-File-Id" to fileId, "X-Upload-Token" to token,
                 "X-Account" to phoneHash, "X-File-Auth" to downloadAuth(fileKey))
             var fetched: Int? = null
-            for (attempt in 1..2) {
-                fetched = pl.sinusoide.sinuschat.network.ApiClient.getToFile(context, "$BASE_URL?action=download", hdrs, enc) { p ->
+            for (attempt in 1..3) {
+                if (attempt > 1) Thread.sleep(2000L * (attempt - 1))
+                fetched = pl.sinusoide.sinuschat.network.ApiClient.getToFile(context, "$BASE_URL?action=download&ack=1", hdrs, enc) { p ->
                     onProgress?.invoke(p * 0.97f)
                 }
                 if (fetched != null) break
@@ -321,6 +323,7 @@ object FileUploader {
                 result.copyTo(target, overwrite = true)
                 result.delete()
             }
+            ackDownload(context, fileId, fileKey, phoneHash)
             onProgress?.invoke(1f)
             true
         } catch (e: Exception) {
@@ -424,20 +427,27 @@ object FileUploader {
         }.start()
     }
 
-    fun uploadGroupAvatarAsync(context: Context, uri: Uri, onComplete: (String?) -> Unit) {
+    fun uploadGroupAvatarAsync(context: Context, uri: Uri, key: ByteArray?, onComplete: (String?) -> Unit) {
         Thread {
-            val url = try {
-                val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                if (bytes == null) null else {
-                    val sanitized = stripExifMetadata(bytes) ?: bytes
-                    val mimeType = context.contentResolver.getType(uri) ?: "image/jpeg"
-                    doUpload(context, sanitized, "group.jpg", "group_avatar", mimeType)
-                        ?.optStringOrNull("url")
-                }
-            } catch (e: Exception) { Log.e(TAG, "Group avatar fail", e); null }
+            val url = uploadGroupAvatarBlocking(context, uri, key)
             android.os.Handler(android.os.Looper.getMainLooper()).post { onComplete(url) }
         }.start()
     }
+
+    fun uploadGroupAvatarBlocking(context: Context, uri: Uri, key: ByteArray?): String? = try {
+        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+        when {
+            bytes == null -> null
+            key != null -> pl.sinusoide.sinuschat.crypto.ProfileCrypto.sealAvatar(context, bytes, key)
+                ?.let { doUpload(context, it, "group.bin", "group_avatar_enc", "application/octet-stream") }
+                ?.optStringOrNull("url")
+            else -> {
+                val sanitized = stripExifMetadata(bytes) ?: bytes
+                val mimeType = context.contentResolver.getType(uri) ?: "image/jpeg"
+                doUpload(context, sanitized, "group.jpg", "group_avatar", mimeType)?.optStringOrNull("url")
+            }
+        }
+    } catch (e: Exception) { Log.e(TAG, "Group avatar fail", e); null }
 
     fun uploadAvatarAsync(context: Context, uri: Uri, phoneHash: String, onComplete: (String?) -> Unit) {
         Thread {
@@ -489,6 +499,19 @@ object FileUploader {
 
     private fun downloadAuth(fileKey: String): String =
         pl.sinusoide.sinuschat.crypto.E2EManager.sha256("dl:$fileKey")
+
+    private fun ackDownload(context: Context, fileId: String, fileKey: String, phoneHash: String) {
+        for (attempt in 1..3) {
+            val token = fetchUploadToken(context) ?: return
+            val hdrs = mapOf("X-File-Id" to fileId, "X-Upload-Token" to token,
+                "X-Account" to phoneHash, "X-File-Auth" to downloadAuth(fileKey))
+            val code = pl.sinusoide.sinuschat.network.ApiClient.postBody(context, "$BASE_URL?action=ack",
+                ByteArray(0).toRequestBody(null), hdrs)?.first
+            if (code != null && code in 200..299) return
+            if (code == 403 || code == 400) { cachedUploadToken = null; if (attempt > 1) return }
+            Log.w(TAG, "ACK: próba $attempt nieudana (HTTP $code)")
+        }
+    }
 
     fun downloadAndDecryptBlocking(context: Context, fileId: String, fileKey: String,
                                    onProgress: ((Float) -> Unit)? = null): ByteArray? =

@@ -357,7 +357,7 @@ class StorageSettingsActivity : AppCompatActivity() {
         }
         when {
             info == null -> AvatarHelper.setLetterAvatar(this, avatar, name, "#5288C1")
-            info.isGroup -> AvatarHelper.loadGroupAvatar(this, avatar, name, info.groupColor, info.avatarUrl, sz)
+            info.isGroup -> AvatarHelper.loadGroupAvatar(this, avatar, name, info.groupColor, info.avatarUrl, sz, info.id)
             !info.avatarUrl.isNullOrEmpty() -> {
                 val fallback = android.graphics.drawable.BitmapDrawable(resources,
                     AvatarHelper.createLetterBitmap(AvatarHelper.initialOf(name),

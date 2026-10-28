@@ -1346,6 +1346,13 @@ When the user asks for a program, a web page, a document, a spreadsheet or a pre
 
     private fun enqueueModels(models: List<ModelInfo>, jump: Boolean = true) {
         if (models.isEmpty()) return
+        val act = activity ?: return
+        pl.sinusoide.sinuschat.util.SafeEngine.guardTor(act, pl.sinusoide.sinuschat.util.SafeEngine.Risk.TOR_MODEL_DOWNLOAD) {
+            if (isAdded) enqueueModelsConfirmed(models, jump)
+        }
+    }
+
+    private fun enqueueModelsConfirmed(models: List<ModelInfo>, jump: Boolean) {
         val ctx = requireContext()
         val need = models.sumOf { it.sizeBytes }
         val free = ctx.filesDir.freeSpace

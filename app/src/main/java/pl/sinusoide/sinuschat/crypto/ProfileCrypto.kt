@@ -105,6 +105,7 @@ object ProfileCrypto {
             try {
                 while (true) {
                     val key = myKeyB64(app)
+                    val gen = p.getLong("push_gen", 0L)
                     if (p.getString("synced", null) != key) break
                     val peers = (pl.sinusoide.sinuschat.util.LocalChats.contacts(app, me) +
                             pl.sinusoide.sinuschat.util.GroupRoster.allMembers(app))
@@ -116,7 +117,7 @@ object ProfileCrypto {
                         Thread.sleep(300L + rnd.nextInt(900))
                     }
                     Log.d(TAG, "Nowy klucz profilu wysłany do ${peers.size} osób")
-                    if (myKeyB64(app) == key) { p.edit().remove("push").apply(); break }
+                    if (myKeyB64(app) == key && p.getLong("push_gen", 0L) == gen) { p.edit().remove("push").apply(); break }
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "Rozsyłanie klucza profilu: ${e.message}")
@@ -128,7 +129,12 @@ object ProfileCrypto {
 
     fun announceProfileChange(ctx: Context) {
         val app = ctx.applicationContext
-        try { prefs(app).edit().putBoolean("push", true).commit() } catch (_: Exception) { return }
+        try {
+            synchronized(this) {
+                val p = prefs(app)
+                p.edit().putBoolean("push", true).putLong("push_gen", p.getLong("push_gen", 0L) + 1).commit()
+            }
+        } catch (_: Exception) { return }
         AppExecutor.io { pushNewKey(app) }
     }
 
@@ -140,6 +146,8 @@ object ProfileCrypto {
     }
 
     private val lastRefresh = HashMap<String, Long>()
+    private val deferredRefresh = HashSet<String>()
+    private const val REFRESH_GAP_MS = 30_000L
 
     fun ensureSynced(ctx: Context) {
         val app = ctx.applicationContext
@@ -169,6 +177,9 @@ object ProfileCrypto {
                 .put("avatarUrl", versioned)
                 .put("avatarUpdatedAt", System.currentTimeMillis()), app) ?: return
             ContactCache.saveAvatarUrl(app, me, versioned)
+            synchronized(this) {
+                p.edit().putBoolean("push", true).putLong("push_gen", p.getLong("push_gen", 0L) + 1).commit()
+            }
         }
         p.edit().putString("synced", keyB64).apply { if (wrap != null) putString("wrapped", keyB64) }.apply()
         pushNewKey(app)
@@ -207,12 +218,26 @@ object ProfileCrypto {
         val old = try { prefs(ctx).getString("c_$hash", null) } catch (_: Exception) { null }
         if (old == keyB64) {
             if (!refreshIfSame) return
+            val app = ctx.applicationContext
             val now = System.currentTimeMillis()
-            synchronized(lastRefresh) {
-                if (now - (lastRefresh[hash] ?: 0L) < 30_000L) return
-                lastRefresh[hash] = now
+            val wait = synchronized(lastRefresh) {
+                val since = now - (lastRefresh[hash] ?: 0L)
+                when {
+                    since >= REFRESH_GAP_MS -> { lastRefresh[hash] = now; 0L }
+                    deferredRefresh.add(hash) -> REFRESH_GAP_MS - since
+                    else -> -1L
+                }
             }
-            AppExecutor.io { refreshContact(ctx.applicationContext, hash) }
+            when {
+                wait == 0L -> AppExecutor.io { refreshContact(app, hash) }
+                wait > 0L -> android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                    synchronized(lastRefresh) {
+                        deferredRefresh.remove(hash)
+                        lastRefresh[hash] = System.currentTimeMillis()
+                    }
+                    AppExecutor.io { refreshContact(app, hash) }
+                }, wait)
+            }
             return
         }
         try { prefs(ctx).edit().putString("c_$hash", keyB64).apply() } catch (_: Exception) { return }
@@ -303,7 +328,9 @@ object ProfileCrypto {
 
     fun isEncryptedAvatar(url: String?) = url != null && url.substringBefore('?').endsWith(".bin")
 
-    fun sealAvatar(ctx: Context, imageBytes: ByteArray): ByteArray? {
+    private fun isGroup(id: String) = id.startsWith("g_")
+
+    fun sealAvatar(ctx: Context, imageBytes: ByteArray, key: ByteArray = myKey(ctx)): ByteArray? {
         val bmp = pl.sinusoide.sinuschat.util.ImagePrep.decodeSampled(imageBytes, AVATAR_MAX_PX * 2) ?: return null
         val scale = minOf(1f, AVATAR_MAX_PX.toFloat() / maxOf(bmp.width, bmp.height))
         val scaled = if (scale < 1f)
@@ -312,7 +339,7 @@ object ProfileCrypto {
         val jpeg = ByteArrayOutputStream().use { out -> scaled.compress(Bitmap.CompressFormat.JPEG, 85, out); out.toByteArray() }
         if (scaled !== bmp) scaled.recycle()
         bmp.recycle()
-        return encrypt(myKey(ctx), jpeg)
+        return encrypt(key, jpeg)
     }
 
     private fun encrypt(key: ByteArray, plain: ByteArray): ByteArray {
@@ -340,7 +367,9 @@ object ProfileCrypto {
         if (!isEncryptedAvatar(url)) return url
         val f = plainFile(ctx, hash, url)
         if (f.exists()) return f.absolutePath
-        if (hash != SetupActivity.getUserPhoneHash(ctx) && contactKey(ctx, hash) == null) {
+        if (isGroup(hash)) {
+            if (GroupMeta.profileKey(ctx, hash) == null) return null
+        } else if (hash != SetupActivity.getUserPhoneHash(ctx) && contactKey(ctx, hash) == null) {
             askForKey(ctx, hash)
             return null
         }
@@ -358,8 +387,11 @@ object ProfileCrypto {
     fun fetchAvatar(ctx: Context, hash: String, url: String, keyOverride: ByteArray? = null): String? {
         val out = plainFile(ctx, hash, url)
         if (out.exists()) return out.absolutePath
-        val key = keyOverride
-            ?: (if (hash == SetupActivity.getUserPhoneHash(ctx)) myKey(ctx) else contactKey(ctx, hash)) ?: return null
+        val key = keyOverride ?: when {
+            isGroup(hash) -> GroupMeta.profileKey(ctx, hash)
+            hash == SetupActivity.getUserPhoneHash(ctx) -> myKey(ctx)
+            else -> contactKey(ctx, hash)
+        } ?: return null
         return try {
             val req = Request.Builder().url(url).build()
             val blob = ApiClient.httpClient(ctx).newCall(req).execute().use { r ->
@@ -372,6 +404,7 @@ object ProfileCrypto {
             out.parentFile?.listFiles { f -> f.name.startsWith("${hash.take(32)}_") }?.forEach { it.delete() }
             out.writeBytes(jpeg)
             AppExecutor.main {
+                pl.sinusoide.sinuschat.util.AvatarHelper.onAvatarDecrypted()
                 ctx.sendBroadcast(android.content.Intent("pl.sinusoide.sinuschat.REFRESH_CONVERSATIONS").setPackage(ctx.packageName))
             }
             out.absolutePath

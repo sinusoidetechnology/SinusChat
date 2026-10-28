@@ -30,15 +30,22 @@ object SafeEngine {
         SEND_LOCATION(R.string.safe_location_title, R.string.safe_location_msg, R.string.safe_location_action),
         SHARE_INVITE(R.string.safe_share_title, R.string.safe_share_msg, R.string.safe_share_action),
         SHARE_GROUP_INVITE(R.string.safe_share_title, R.string.safe_share_group_msg, R.string.safe_share_action),
-        CLOUD_BACKUP(R.string.safe_backup_title, R.string.safe_backup_msg, R.string.safe_backup_action)
+        CLOUD_BACKUP(R.string.safe_backup_title, R.string.safe_backup_msg, R.string.safe_backup_action),
+        TOR_MODEL_DOWNLOAD(R.string.safe_tor_model_title, R.string.safe_tor_model_msg, R.string.safe_tor_model_action),
+        TOR_CALL(R.string.safe_tor_call_title, R.string.safe_tor_call_msg, R.string.safe_tor_call_action)
     }
 
     fun isEnabled(activity: Activity): Boolean = NotificationPrefs.safetyPrompts(activity)
 
-    fun guard(activity: Activity, risk: Risk, subject: String? = null, onProceed: () -> Unit) {
+    fun guard(activity: Activity, risk: Risk, subject: String? = null, onCancel: (() -> Unit)? = null, onProceed: () -> Unit) {
         if (activity.isFinishing || activity.isDestroyed) return
         if (!isEnabled(activity)) { onProceed(); return }
-        show(activity, risk, subject.orEmpty(), onProceed)
+        show(activity, risk, subject.orEmpty(), onCancel, onProceed)
+    }
+
+    fun guardTor(activity: Activity, risk: Risk, onCancel: (() -> Unit)? = null, onProceed: () -> Unit) {
+        if (!PrivacySettings.isTorEnabled(activity)) { onProceed(); return }
+        guard(activity, risk, null, onCancel, onProceed)
     }
 
     fun openLink(activity: Activity, url: String) {
@@ -69,7 +76,7 @@ object SafeEngine {
         return SINUSOIDE_PAGES[host]?.any { path == it || path.startsWith("$it/") } == true
     }
 
-    private fun show(activity: Activity, risk: Risk, subject: String, onProceed: () -> Unit) {
+    private fun show(activity: Activity, risk: Risk, subject: String, onCancel: (() -> Unit)?, onProceed: () -> Unit) {
         val d = activity.resources.displayMetrics.density
         fun px(v: Float) = (v * d).toInt()
         val accent = ThemeUi.accent(activity)
@@ -174,11 +181,14 @@ object SafeEngine {
             help.setTextColor(if (why) ThemeUi.onAccent(activity) else primary)
             (help.background as? GradientDrawable)?.setColor(if (why) accent else neutral)
         }
+        var proceeded = false
         cancel.setOnClickListener { dialog.dismiss() }
         proceed.setOnClickListener {
+            proceeded = true
             dialog.dismiss()
             onProceed()
         }
+        dialog.setOnDismissListener { if (!proceeded) onCancel?.invoke() }
 
         dialog.setContentView(card)
         dialog.window?.let { w ->

@@ -950,48 +950,35 @@ class GroupCreatorActivity : AppCompatActivity() {
             PopupHelper.show(this, getString(R.string.enter_group_name)); return
         }
 
-        val action = { avatarUrl: String? ->
-            GroupRepository.createGroup(
-                context = this,
-                name = name,
-                memberHashes = selected.keys.toList(),
-                avatarColor = selectedColor,
-                avatarUrl = avatarUrl,
-                kind = when (chosenType) { "comm" -> "community"; "group" -> "group"; else -> "custom" }
-            ) { groupId ->
-                if (groupId == null) {
-                    PopupHelper.showError(this, getString(R.string.error_create_group))
-                    return@createGroup
-                }
-                if (pendingTtlMs > 0L) {
-                    DisappearingMessages.setTtl(this, groupId, pendingTtlMs)
-                    GroupRepository.setDisappearing(this, groupId, pendingTtlMs,
-                        DisappearingMessages.TRIGGER_READ) {}
-                }
-                GroupRepository.setPermissions(this, groupId,
-                    GroupPerms(permEditSettings, permSendMessages, permAddMembers, permCallGroup)) {}
-                startActivity(Intent(this, ChatActivity::class.java).apply {
-                    putExtra("conversationId", groupId)
-                    putExtra("otherUserName", name)
-                    putExtra("otherUserHash", "")
-                    putExtra("isGroup", true)
-                    putExtra("weStarted", true)
-                })
-                finish()
+        if (selectedAvatarUri != null) PopupHelper.show(this, getString(R.string.sending_photo))
+        GroupRepository.createGroup(
+            context = this,
+            name = name,
+            memberHashes = selected.keys.toList(),
+            avatarColor = selectedColor,
+            kind = when (chosenType) { "comm" -> "community"; "group" -> "group"; else -> "custom" },
+            avatarUri = selectedAvatarUri,
+            onPhotoFailed = { PopupHelper.showError(this, getString(R.string.photo_upload_server_error)) }
+        ) { groupId ->
+            if (groupId == null) {
+                PopupHelper.showError(this, getString(R.string.error_create_group))
+                return@createGroup
             }
-        }
-
-        if (selectedAvatarUri != null) {
-            PopupHelper.show(this, getString(R.string.sending_photo))
-            FileUploader.uploadGroupAvatarAsync(this, selectedAvatarUri!!) { remoteUrl ->
-                if (remoteUrl == null) {
-                    PopupHelper.showError(this, getString(R.string.photo_upload_server_error))
-                    return@uploadGroupAvatarAsync
-                }
-                action(AvatarHelper.versionedUrl(remoteUrl))
+            if (pendingTtlMs > 0L) {
+                DisappearingMessages.setTtl(this, groupId, pendingTtlMs)
+                GroupRepository.setDisappearing(this, groupId, pendingTtlMs,
+                    DisappearingMessages.TRIGGER_READ) {}
             }
-        } else {
-            action(null)
+            GroupRepository.setPermissions(this, groupId,
+                GroupPerms(permEditSettings, permSendMessages, permAddMembers, permCallGroup)) {}
+            startActivity(Intent(this, ChatActivity::class.java).apply {
+                putExtra("conversationId", groupId)
+                putExtra("otherUserName", name)
+                putExtra("otherUserHash", "")
+                putExtra("isGroup", true)
+                putExtra("weStarted", true)
+            })
+            finish()
         }
     }
 }

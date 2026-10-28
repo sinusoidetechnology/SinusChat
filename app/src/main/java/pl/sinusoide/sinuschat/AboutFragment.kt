@@ -1067,11 +1067,13 @@ class AboutFragment : Fragment() {
                         .put("avatarUrl", versioned)
                         .put("avatarUpdatedAt", System.currentTimeMillis()), ctx)
                 AppExecutor.main {
-                    if (!isAdded) return@main
                     if (ok != null) {
                         pl.sinusoide.sinuschat.util.ContactCache.saveAvatarUrl(ctx, myHash, versioned)
                         pl.sinusoide.sinuschat.util.ConversationCache.clear(ctx)
                         pl.sinusoide.sinuschat.crypto.ProfileCrypto.announceProfileChange(ctx)
+                    }
+                    if (!isAdded) return@main
+                    if (ok != null) {
                         PopupHelper.showSuccess(requireActivity(), getString(R.string.photo_changed))
                     } else {
                         PopupHelper.showError(requireActivity(), getString(R.string.photo_upload_server_error))

@@ -95,7 +95,7 @@ object DeleteChatSheet {
         val avatarSize = (46 * d).toInt()
         val avatar = ImageView(activity)
         if (isGroup) {
-            AvatarHelper.loadGroupAvatar(activity, avatar, name, groupColor ?: "#5288C1", avatarUrl, avatarSize)
+            AvatarHelper.loadGroupAvatar(activity, avatar, name, groupColor ?: "#5288C1", avatarUrl, avatarSize, conversationId)
         } else {
             val color = AvatarHelper.getContactColor(activity, otherHash.orEmpty())
             avatar.setImageBitmap(AvatarHelper.createLetterBitmap(AvatarHelper.initialOf(name), color, avatarSize))

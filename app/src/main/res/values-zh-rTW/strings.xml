@@ -104,6 +104,12 @@
     <string name="safe_backup_title">SinusChat 想要連線到 Google 雲端硬碟</string>
     <string name="safe_backup_msg">你的備份將儲存在 Google 的伺服器上。備份已加密，Google 無法讀取內容，但能看到它的大小和建立時間。資料離開 SinusChat 後，Sinusoide 無法保護它。要繼續嗎？</string>
     <string name="safe_backup_action">連線</string>
+    <string name="safe_tor_model_title">不經 Tor 下載</string>
+    <string name="safe_tor_model_msg">Sinia 模型會直接下載，不經過 Tor，因為我們的檔案伺服器不接受來自 Tor 網路的流量。伺服器會看到你真實的 IP 位址。</string>
+    <string name="safe_tor_model_action">下載</string>
+    <string name="safe_tor_call_title">不經 Tor 通話</string>
+    <string name="safe_tor_call_msg">即時通話無法透過 Tor 傳送。對方看不到你的 IP 位址，但我們的通話伺服器可以。</string>
+    <string name="safe_tor_call_action">繼續</string>
     <string name="safe_why_title">為什麼會看到這個？</string>
     <string name="safe_why_msg">這可能有潛在風險，但不一定。Sinusoide 希望 SinusChat 安全無虞，所以會告訴你即將發生的事。看到這則訊息時請格外小心。你可以在「設定」→「通知」→「提醒潛在風險」中關閉它。</string>
     <string name="safe_several_files">多個檔案</string>
@@ -1199,6 +1205,8 @@
     <string name="msg_expired_group_none">訊息未送達：群組中沒有人在 24 小時內接收，而伺服器不會保留訊息更久。</string>
     <string name="media_gone">內容已在 24 小時後從伺服器移除。請要求對方重新傳送。</string>
     <string name="media_gone_short">24 小時後已從伺服器移除</string>
+    <string name="media_gone_recent">伺服器上已沒有這個檔案。請要求對方重新傳送。</string>
+    <string name="media_gone_recent_short">伺服器上已無此檔案</string>
     <string name="resend_message">重新傳送</string>
     <string name="resend_failed">部分訊息無法重新傳送，因為它們的檔案已不在這支手機上。</string>
     <string name="msg_expired_private_many">這些訊息未送達：收件人未在 24 小時內接收，而伺服器不會保留訊息更久。</string>

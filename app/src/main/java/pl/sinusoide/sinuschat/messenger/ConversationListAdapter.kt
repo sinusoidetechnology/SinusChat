@@ -232,7 +232,7 @@ class ConversationListAdapter(
         img.setImageDrawable(null)
 
         if (item.isGroup) {
-            AvatarHelper.loadGroupAvatar(ctx, img, item.otherUserName, item.groupColor, item.avatarUrl)
+            AvatarHelper.loadGroupAvatar(ctx, img, item.otherUserName, item.groupColor, item.avatarUrl, groupId = item.id)
         } else if (!item.avatarUrl.isNullOrEmpty()) {
             val fallback = BitmapDrawable(
                 ctx.resources,

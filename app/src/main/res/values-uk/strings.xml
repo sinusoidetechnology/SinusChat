@@ -108,6 +108,12 @@
     <string name="safe_backup_title">SinusChat хоче під’єднатися до Google Диска</string>
     <string name="safe_backup_msg">Резервна копія потрапить на сервери Google. Вона зашифрована, тож Google не прочитає її вмісту, але бачитиме її розмір і час створення. Sinusoide не захищає дані поза SinusChat. Продовжити?</string>
     <string name="safe_backup_action">Під’єднати</string>
+    <string name="safe_tor_model_title">Завантаження без Tor</string>
+    <string name="safe_tor_model_msg">Моделі Sinia завантажуються напряму, в обхід Tor, бо наш файловий сервер не приймає трафік із мережі Tor. Сервер побачить вашу справжню IP-адресу.</string>
+    <string name="safe_tor_model_action">Завантажити</string>
+    <string name="safe_tor_call_title">Дзвінок без Tor</string>
+    <string name="safe_tor_call_msg">Дзвінки в реальному часі неможливо передати через Tor. Співрозмовник не побачить вашої IP-адреси, але наш сервер дзвінків побачить.</string>
+    <string name="safe_tor_call_action">Продовжити</string>
     <string name="safe_why_title">Чому я бачу це сповіщення?</string>
     <string name="safe_why_msg">Можливо, це потенційна загроза, але не обов’язково. Sinusoide хоче, щоб SinusChat був безпечним, тому повідомляє вас про те, що має статися. Будьте особливо обережні, коли бачите це сповіщення. Вимкнути його можна в Налаштування → Сповіщення → Попереджати про потенційну загрозу.</string>
     <string name="safe_several_files">кілька файлів</string>
@@ -1228,6 +1234,8 @@
     <string name="msg_expired_group_none">Повідомлення не доставлено — ніхто з групи не отримав його протягом 24 годин, а сервер не зберігає повідомлення довше.</string>
     <string name="media_gone">Вміст видалено із сервера через 24 години. Попросіть надіслати його ще раз.</string>
     <string name="media_gone_short">Видалено із сервера через 24 год</string>
+    <string name="media_gone_recent">Цього файлу вже немає на сервері. Попросіть надіслати його ще раз.</string>
+    <string name="media_gone_recent_short">Уже немає на сервері</string>
     <string name="resend_message">Надіслати ще раз</string>
     <string name="resend_failed">Частину повідомлень не вдалося надіслати ще раз — їхніх файлів уже немає на цьому телефоні.</string>
     <string name="msg_expired_private_many">Ці повідомлення не доставлено — одержувач не отримав їх протягом 24 годин, а сервер не зберігає повідомлення довше.</string>

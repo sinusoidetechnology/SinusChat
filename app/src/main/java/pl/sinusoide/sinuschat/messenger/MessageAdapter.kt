@@ -765,12 +765,12 @@ class MessageAdapter(
                     holder.image.setOnClickListener {
                         if (isSelectionMode) toggleSelection(item.id)
                         else if (placeholder) Unit
-                        else if (gone) explainGone(ctx)
+                        else if (gone) explainGone(ctx, item)
                         else if (bitmap == null) onMediaDownload?.invoke(item)
                         else if (onMediaOpen != null) onMediaOpen?.invoke(listOf(item), 0)
                         else bitmap.let { onImageClick?.invoke(it) }
                     }
-                    if (gone) showGoneOverlay(holder)
+                    if (gone) showGoneOverlay(holder, item)
                 }
                 when {
                     placeholder -> showUploadOverlay(holder, item)
@@ -792,7 +792,7 @@ class MessageAdapter(
 
             when {
                 gone -> {
-                    holder.docMeta!!.text = "$ext  ·  " + ctx.getString(R.string.media_gone_short)
+                    holder.docMeta!!.text = "$ext  ·  " + pl.sinusoide.sinuschat.util.MediaGone.text(ctx, item.timestampMs, short = true)
                     holder.docAction!!.visibility = View.VISIBLE
                     holder.docAction.setImageResource(R.drawable.ic_no_media)
                 }
@@ -819,9 +819,9 @@ class MessageAdapter(
                     holder.docAction.setImageResource(R.drawable.ic_download)
                 }
             }
-            holder.docAction.contentDescription = ctx.getString(if (gone) R.string.media_gone else R.string.save_to_device)
+            holder.docAction.contentDescription = if (gone) pl.sinusoide.sinuschat.util.MediaGone.text(ctx, item.timestampMs) else ctx.getString(R.string.save_to_device)
             holder.docAction.setOnClickListener {
-                if (isSelectionMode) toggleSelection(item.id) else if (gone) explainGone(ctx) else onAttachmentSave?.invoke(item)
+                if (isSelectionMode) toggleSelection(item.id) else if (gone) explainGone(ctx, item) else onAttachmentSave?.invoke(item)
             }
 
             holder.docIcon!!.setImageResource(
@@ -857,7 +857,7 @@ class MessageAdapter(
             holder.docCard.setOnClickListener {
                 if (isSelectionMode) toggleSelection(item.id)
                 else if (placeholder) { if (item.status == MessageEntity.STATUS_FAILED) onUploadRetry?.invoke(item) }
-                else if (gone) explainGone(ctx)
+                else if (gone) explainGone(ctx, item)
                 else onAttachmentClick?.invoke(item)
             }
         } else if (item.text.startsWith("geo:")) {
@@ -1172,14 +1172,18 @@ class MessageAdapter(
             progress = { AttachmentDownloader.progressOf(item.id) }
         }
 
-    private fun explainGone(ctx: android.content.Context) {
-        (ctx as? android.app.Activity)?.let { pl.sinusoide.sinuschat.util.PopupHelper.show(it, ctx.getString(R.string.media_gone)) }
+    private fun explainGone(ctx: android.content.Context, item: MessageEntity) {
+        (ctx as? android.app.Activity)?.let { pl.sinusoide.sinuschat.util.PopupHelper.show(it, pl.sinusoide.sinuschat.util.MediaGone.text(ctx, item.timestampMs)) }
     }
 
-    private fun showGoneOverlay(holder: VH) {
+    private fun showGoneOverlay(holder: VH, item: MessageEntity) {
         val box = holder.imageOverlay ?: return
         val ctx = box.context
         val d = ctx.resources.displayMetrics.density
+        val label = pl.sinusoide.sinuschat.util.MediaGone.text(ctx, item.timestampMs)
+        val image = holder.image
+        val imageWidth = image?.layoutParams?.width?.takeIf { it > 0 } ?: (240 * d).toInt()
+        val inset = (image?.layoutParams as? ViewGroup.MarginLayoutParams)?.leftMargin ?: 0
         box.removeAllViews()
         box.visibility = View.VISIBLE
         box.addView(ImageView(ctx).apply {
@@ -1191,20 +1195,22 @@ class MessageAdapter(
             }
             val p = (14 * d).toInt()
             setPadding(p, p, p, p)
-            contentDescription = ctx.getString(R.string.media_gone)
+            contentDescription = label
         }, FrameLayout.LayoutParams(-1, -1))
-        (holder.image?.parent as? FrameLayout)?.addView(TextView(ctx).apply {
+        (image?.parent as? FrameLayout)?.addView(TextView(ctx).apply {
             tag = VIDEO_CHIP_TAG
-            text = ctx.getString(R.string.media_gone)
+            text = label
             textSize = 11.5f
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
+            maxLines = 4
+            ellipsize = android.text.TextUtils.TruncateAt.END
             background = android.graphics.drawable.GradientDrawable().apply {
                 cornerRadius = 10 * d; setColor(0x8C000000.toInt())
             }
             setPadding((10 * d).toInt(), (6 * d).toInt(), (10 * d).toInt(), (6 * d).toInt())
-        }, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM).apply {
-            leftMargin = (8 * d).toInt(); rightMargin = (8 * d).toInt(); bottomMargin = (8 * d).toInt()
+        }, FrameLayout.LayoutParams(imageWidth - (16 * d).toInt(), -2, Gravity.BOTTOM or Gravity.START).apply {
+            leftMargin = inset + (8 * d).toInt(); bottomMargin = (11 * d).toInt()
         })
     }
 
@@ -1285,7 +1291,7 @@ class MessageAdapter(
             when {
                 isSelectionMode -> toggleSelection(item.id)
                 placeholder -> Unit
-                gone -> explainGone(ctx)
+                gone -> explainGone(ctx, item)
                 else -> onAttachmentClick?.invoke(item)
             }
         }
@@ -1293,7 +1299,7 @@ class MessageAdapter(
         val box = holder.imageOverlay ?: return
         when {
             placeholder -> showUploadOverlay(holder, item)
-            gone -> showGoneOverlay(holder)
+            gone -> showGoneOverlay(holder, item)
             AttachmentDownloader.isActive(item.id) -> {
                 box.removeAllViews()
                 box.visibility = View.VISIBLE
@@ -1513,7 +1519,7 @@ class MessageAdapter(
                     when {
                         isSelectionMode -> toggleSelection(item.id)
                         uploading -> Unit
-                        !have && pl.sinusoide.sinuschat.util.MediaGone.isGone(ctx, m.id) -> explainGone(ctx)
+                        !have && pl.sinusoide.sinuschat.util.MediaGone.isGone(ctx, m.id) -> explainGone(ctx, m)
                         !have -> onMediaDownload?.invoke(m)
                         else -> onMediaOpen?.invoke(members, members.indexOf(m).coerceAtLeast(0))
                     }

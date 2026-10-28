@@ -108,6 +108,12 @@
     <string name="safe_backup_title">SinusChat se chce připojit k Disku Google</string>
     <string name="safe_backup_msg">Záloha se uloží na servery Google. Je šifrovaná, takže Google nepřečte její obsah, ale uvidí její velikost a čas vytvoření. Sinusoide data nechrání, jakmile opustí SinusChat. Chcete pokračovat?</string>
     <string name="safe_backup_action">Připojit</string>
+    <string name="safe_tor_model_title">Stažení bez Toru</string>
+    <string name="safe_tor_model_msg">Modely Sinii se stahují přímo, mimo Tor, protože náš souborový server nepřijímá provoz ze sítě Tor. Server uvidí vaši skutečnou IP adresu.</string>
+    <string name="safe_tor_model_action">Stáhnout</string>
+    <string name="safe_tor_call_title">Hovor bez Toru</string>
+    <string name="safe_tor_call_msg">Hovory v reálném čase nelze vést přes Tor. Druhá strana vaši IP adresu neuvidí, ale náš server pro hovory ano.</string>
+    <string name="safe_tor_call_action">Pokračovat</string>
     <string name="safe_why_title">Proč vidím toto upozornění?</string>
     <string name="safe_why_msg">Může jít o potenciální riziko, ale nemusí. Sinusoide chce, aby byl SinusChat bezpečný, a proto vás upozorňuje na to, co se chystá. Při tomto upozornění buďte obzvlášť opatrní. Vypnout ho můžete v Nastavení → Oznámení → Upozorňovat na možná rizika.</string>
     <string name="safe_several_files">několik souborů</string>
@@ -1228,6 +1234,8 @@
     <string name="msg_expired_group_none">Zpráva nebyla doručena — nikdo ze skupiny si ji nestáhl do 24 hodin a server zprávy déle neuchovává.</string>
     <string name="media_gone">Obsah byl ze serveru smazán po 24 hodinách. Požádejte o opětovné odeslání.</string>
     <string name="media_gone_short">Smazáno ze serveru po 24 h</string>
+    <string name="media_gone_recent">Tento soubor už na serveru není. Požádejte o opětovné odeslání.</string>
+    <string name="media_gone_recent_short">Už není na serveru</string>
     <string name="resend_message">Odeslat znovu</string>
     <string name="resend_failed">Některé zprávy se nepodařilo odeslat znovu — jejich soubor už v tomto telefonu není.</string>
     <string name="msg_expired_private_many">Tyto zprávy nebyly doručeny — příjemce si je nestáhl do 24 hodin a server zprávy déle neuchovává.</string>

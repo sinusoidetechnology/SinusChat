@@ -155,7 +155,7 @@ class GroupJoinSheet(
     }
 
     private fun render(p: GroupInviteManager.Preview) {
-        AvatarHelper.loadGroupAvatar(activity, avatar, p.name, p.avatarColor, p.avatarUrl, (86 * dp).toInt())
+        AvatarHelper.loadGroupAvatar(activity, avatar, p.name, p.avatarColor, p.avatarUrl, (86 * dp).toInt(), p.groupId)
         avatar.scaleX = 0.8f; avatar.scaleY = 0.8f
         avatar.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(320)
             .setInterpolator(android.view.animation.OvershootInterpolator(1.6f)).start()

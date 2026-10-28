@@ -532,7 +532,7 @@ class ForwardActivity : AppCompatActivity() {
 
     private fun loadAvatar(img: ImageView, c: Chat, size: Int) {
         if (c.target.isGroup) {
-            AvatarHelper.loadGroupAvatar(this, img, c.target.name, c.groupColor, c.avatarUrl, size)
+            AvatarHelper.loadGroupAvatar(this, img, c.target.name, c.groupColor, c.avatarUrl, size, c.target.conversationId)
             return
         }
         val letter = BitmapDrawable(resources, AvatarHelper.createLetterBitmap(

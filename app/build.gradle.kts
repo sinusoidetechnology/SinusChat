@@ -21,8 +21,8 @@ android {
         applicationId = "pl.sinusoide.sinuschat"
         minSdk = 26
         targetSdk = 36
-        versionCode = 23
-        versionName = "1.2"
+        versionCode = 24
+        versionName = "1.2.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         buildConfigField("String", "FCM_API_KEY", "\"${fcmProp("fcm.apiKey")}\"")

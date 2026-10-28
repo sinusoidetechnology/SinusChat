@@ -181,16 +181,33 @@ object AvatarHelper {
         Color.parseColor(PALETTE[0])
     }
 
+    private val pendingGroupAvatars = java.util.WeakHashMap<android.widget.ImageView, (android.widget.ImageView) -> Unit>()
+
+    fun onAvatarDecrypted() {
+        val pending = pendingGroupAvatars.entries.map { it.key to it.value }
+        pendingGroupAvatars.clear()
+        pending.forEach { (view, reload) -> runCatching { reload(view) } }
+    }
+
     fun loadGroupAvatar(
         context: android.content.Context,
         imageView: android.widget.ImageView,
         name: String,
         colorHex: String,
-        url: String?,
-        sizePx: Int = 0
+        rawUrl: String?,
+        sizePx: Int = 0,
+        groupId: String? = null
     ) {
         val safeName = name.ifEmpty { "G" }
+        pendingGroupAvatars.remove(imageView)
         com.bumptech.glide.Glide.with(imageView).clear(imageView)
+        val url = if (pl.sinusoide.sinuschat.crypto.ProfileCrypto.isEncryptedAvatar(rawUrl)) {
+            groupId?.let { pl.sinusoide.sinuschat.crypto.ProfileCrypto.displayAvatar(context, it, rawUrl) }.also {
+                if (it == null && groupId != null) pendingGroupAvatars[imageView] = { v ->
+                    loadGroupAvatar(v.context, v, name, colorHex, rawUrl, sizePx, groupId)
+                }
+            }
+        } else rawUrl
         if (url.isNullOrEmpty()) {
             setLetterAvatar(context, imageView, safeName, colorHex)
             return

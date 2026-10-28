@@ -106,6 +106,12 @@
     <string name="safe_backup_title">SinusChat möchte sich mit Google Drive verbinden</string>
     <string name="safe_backup_msg">Das Backup wird auf den Servern von Google gespeichert. Es ist verschlüsselt, daher kann Google den Inhalt nicht lesen, sieht aber seine Größe und wann es erstellt wurde. Sinusoide kann Daten nicht schützen, sobald sie SinusChat verlassen. Möchtest du fortfahren?</string>
     <string name="safe_backup_action">Verbinden</string>
+    <string name="safe_tor_model_title">Download ohne Tor</string>
+    <string name="safe_tor_model_msg">Sinia-Modelle werden direkt an Tor vorbei geladen, weil unser Dateiserver keinen Verkehr aus dem Tor-Netz annimmt. Der Server sieht deine echte IP-Adresse.</string>
+    <string name="safe_tor_model_action">Laden</string>
+    <string name="safe_tor_call_title">Anruf ohne Tor</string>
+    <string name="safe_tor_call_msg">Live-Anrufe lassen sich nicht über Tor leiten. Dein Gesprächspartner sieht deine IP-Adresse nicht, unser Anrufserver aber schon.</string>
+    <string name="safe_tor_call_action">Weiter</string>
     <string name="safe_why_title">Warum sehe ich diesen Hinweis?</string>
     <string name="safe_why_msg">Das kann ein mögliches Risiko sein, muss es aber nicht. Sinusoide möchte, dass SinusChat sicher ist, und informiert dich deshalb über das, was gleich passiert. Sei besonders vorsichtig, wenn du diesen Hinweis siehst. Du kannst ihn unter Einstellungen → Benachrichtigungen → Vor möglichen Risiken warnen ausschalten.</string>
     <string name="safe_several_files">mehrere Dateien</string>
@@ -1210,6 +1216,8 @@
     <string name="msg_expired_group_none">Die Nachricht wurde nicht zugestellt – niemand in der Gruppe hat sie innerhalb von 24 Stunden abgerufen, und der Server speichert Nachrichten nicht länger.</string>
     <string name="media_gone">Der Inhalt wurde nach 24 Stunden vom Server gelöscht. Bitte darum, ihn noch einmal zu senden.</string>
     <string name="media_gone_short">Nach 24 h vom Server gelöscht</string>
+    <string name="media_gone_recent">Diese Datei ist nicht mehr auf dem Server. Bitte darum, sie noch einmal zu senden.</string>
+    <string name="media_gone_recent_short">Nicht mehr auf dem Server</string>
     <string name="resend_message">Erneut senden</string>
     <string name="resend_failed">Einige Nachrichten konnten nicht erneut gesendet werden – ihre Dateien sind nicht mehr auf diesem Handy.</string>
     <string name="msg_expired_private_many">Diese Nachrichten wurden nicht zugestellt – der Empfänger hat sie nicht innerhalb von 24 Stunden abgerufen, und der Server speichert Nachrichten nicht länger.</string>

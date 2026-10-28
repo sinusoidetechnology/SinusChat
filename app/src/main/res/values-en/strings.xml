@@ -105,6 +105,12 @@
     <string name="safe_backup_title">SinusChat wants to connect to Google Drive</string>
     <string name="safe_backup_msg">Your backup will be stored on Google\'s servers. It\'s encrypted, so Google can\'t read its contents, but it will see its size and when it was made. Sinusoide can\'t protect data once it leaves SinusChat. Do you want to continue?</string>
     <string name="safe_backup_action">Connect</string>
+    <string name="safe_tor_model_title">Download without Tor</string>
+    <string name="safe_tor_model_msg">Sinia models download directly, bypassing Tor, because our file server doesn\'t accept traffic from the Tor network. The server will see your real IP address.</string>
+    <string name="safe_tor_model_action">Download</string>
+    <string name="safe_tor_call_title">Call without Tor</string>
+    <string name="safe_tor_call_msg">Live calls can\'t go through Tor. The other person won\'t see your IP address, but our call server will.</string>
+    <string name="safe_tor_call_action">Continue</string>
     <string name="safe_why_title">Why am I seeing this?</string>
     <string name="safe_why_msg">This may be a potential risk, but it doesn\'t have to be. Sinusoide wants SinusChat to be safe, so it tells you about what\'s about to happen. Take extra care when you see this message. You can turn it off in Settings → Notifications → Warn about potential risks.</string>
     <string name="safe_several_files">several files</string>
@@ -1260,6 +1266,8 @@
     <string name="msg_expired_group_none">Message not delivered — nobody in the group fetched it within 24 hours, and the server does not keep messages longer.</string>
     <string name="media_gone">The content was removed from the server after 24 hours. Ask for it to be sent again.</string>
     <string name="media_gone_short">Removed from server after 24 h</string>
+    <string name="media_gone_recent">This file is no longer on the server. Ask for it to be sent again.</string>
+    <string name="media_gone_recent_short">No longer on the server</string>
     <string name="resend_message">Send again</string>
     <string name="resend_failed">Some messages couldn\'t be sent again — their files are no longer on this phone.</string>
     <string name="msg_expired_private_many">These messages were not delivered — the recipient did not fetch them within 24 hours, and the server does not keep messages longer.</string>

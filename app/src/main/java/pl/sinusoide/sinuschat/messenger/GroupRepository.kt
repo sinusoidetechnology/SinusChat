@@ -77,19 +77,27 @@ object GroupRepository {
         avatarColor: String = "#5288C1",
         avatarUrl: String? = null,
         kind: String? = null,
+        avatarUri: android.net.Uri? = null,
+        onPhotoFailed: (() -> Unit)? = null,
         onResult: (groupId: String?) -> Unit
     ) {
         AppExecutor.io {
             try {
                 val profileKey = if (memberHashes.all { hasNewProtocol(context, it) })
                     pl.sinusoide.sinuschat.crypto.GroupMeta.newKey() else null
+                val photoUrl = avatarUri?.let { uri ->
+                    pl.sinusoide.sinuschat.util.FileUploader.uploadGroupAvatarBlocking(context, uri, profileKey) ?: run {
+                        AppExecutor.main { onPhotoFailed?.invoke() ?: onResult(null) }
+                        return@io
+                    }
+                } ?: avatarUrl
                 val body = JSONObject().apply {
                     put("name", profileKey?.let { pl.sinusoide.sinuschat.crypto.GroupMeta.seal(it, name) } ?: name)
                     put("description", profileKey?.let {
                         if (description.isEmpty()) "" else pl.sinusoide.sinuschat.crypto.GroupMeta.seal(it, description)
                     } ?: description)
                     put("avatarColor", avatarColor)
-                    if (avatarUrl != null) put("avatarUrl", avatarUrl)
+                    if (photoUrl != null) put("avatarUrl", photoUrl)
                     if (kind != null) put("kind", kind)
                     put("members", JSONArray(memberHashes))
                     put("aks", JSONObject().apply {
