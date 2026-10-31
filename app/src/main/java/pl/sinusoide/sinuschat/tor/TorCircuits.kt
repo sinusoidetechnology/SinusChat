@@ -62,6 +62,7 @@ object TorCircuits {
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
             service = (binder as? TorService.LocalBinder)?.service
+            service?.let { s -> runCatching { TorManager.updateSocksPort(s.socksPort) } }
             retries = 0
             worker.execute { hook() }
         }
@@ -78,7 +79,7 @@ object TorCircuits {
         appCtx = app
         main.post {
             if (!bound) bound = try {
-                app.bindService(Intent(app, TorService::class.java), connection, 0)
+                app.bindService(Intent(app, SinusTorService::class.java), connection, Context.BIND_AUTO_CREATE)
             } catch (t: Throwable) { false }
             worker.execute { hook() }
         }
@@ -135,6 +136,7 @@ object TorCircuits {
         }
         if (hooked === c) return
         hooked = c
+        service?.let { s -> runCatching { TorManager.updateSocksPort(s.socksPort) } }
         try {
             c.addRawEventListener { keyword, data -> if (keyword == "CIRC") onCirc(data) }
         } catch (t: Throwable) {

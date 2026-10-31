@@ -29,7 +29,7 @@ class RestartActivity : Activity() {
             startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
         }
         finish()
-        Runtime.getRuntime().exit(0)
+        Process.killProcess(Process.myPid())
     }
 
     companion object {
@@ -44,7 +44,7 @@ class RestartActivity : Activity() {
                 .putExtra(EXTRA_PID, Process.myPid())
                 .putExtra(EXTRA_WIPE_DB, wipeDb)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            Runtime.getRuntime().exit(0)
+            Process.killProcess(Process.myPid())
         }
 
         fun isRestartProcess(): Boolean {

@@ -107,7 +107,16 @@ class ModelDownloadService : Service() {
     fun enqueue(job: Job) {
         if (isQueued(job.filename)) return
         synchronized(lock) { pending.add(job) }
-        startForeground(NOTIF_ID, buildNotification(job.label, getString(R.string.sinia_queue_waiting), indet = true))
+        try {
+            androidx.core.app.ServiceCompat.startForeground(this, NOTIF_ID,
+                buildNotification(job.label, getString(R.string.sinia_queue_waiting), indet = true),
+                if (android.os.Build.VERSION.SDK_INT >= 29) android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC else 0)
+        } catch (e: Exception) {
+            android.util.Log.w("ModelDownload", "Nie można uruchomić pobierania w tle: ${e.javaClass.simpleName}")
+            synchronized(lock) { pending.remove(job) }
+            stopSelf()
+            return
+        }
         notifyQueue()
         pump()
     }

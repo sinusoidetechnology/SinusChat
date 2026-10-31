@@ -76,21 +76,23 @@ object SafeEngine {
         return SINUSOIDE_PAGES[host]?.any { path == it || path.startsWith("$it/") } == true
     }
 
-    private fun show(activity: Activity, risk: Risk, subject: String, onCancel: (() -> Unit)?, onProceed: () -> Unit) {
+    private class Frame(
+        val dialog: Dialog,
+        val card: LinearLayout,
+        val head: FrameLayout,
+        val titleView: TextView,
+        val messageView: TextView,
+        val density: Float
+    ) {
+        fun px(v: Float) = (v * density).toInt()
+    }
+
+    private fun frame(activity: Activity, title: String, message: String): Frame {
         val d = activity.resources.displayMetrics.density
         fun px(v: Float) = (v * d).toInt()
         val accent = ThemeUi.accent(activity)
         val primary = ThemeUi.textPrimary(activity)
         val secondary = ThemeUi.textSecondary(activity)
-        val neutral = (primary and 0x00FFFFFF) or 0x1F000000
-
-        val title = activity.getString(risk.title, subject)
-        var message = activity.getString(risk.message)
-        if (risk == Risk.LINK_PREVIEW && PrivacySettings.isTorEnabled(activity)) {
-            message += " " + activity.getString(R.string.safe_preview_tor)
-        }
-        val whyTitle = activity.getString(R.string.safe_why_title)
-        val whyMessage = activity.getString(R.string.safe_why_msg)
 
         val dialog = Dialog(activity)
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
@@ -120,18 +122,6 @@ object SafeEngine {
         head.addView(tile, FrameLayout.LayoutParams(px(74f), px(74f), Gravity.CENTER_HORIZONTAL or Gravity.TOP).apply {
             topMargin = px(12f)
         })
-        val help = TextView(activity).apply {
-            text = "?"
-            gravity = Gravity.CENTER
-            textSize = 15f
-            typeface = Typeface.DEFAULT_BOLD
-            setTextColor(primary)
-            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(neutral) }
-            contentDescription = whyTitle
-            isClickable = true
-            isFocusable = true
-        }
-        head.addView(help, FrameLayout.LayoutParams(px(30f), px(30f), Gravity.END or Gravity.TOP))
         card.addView(head, LinearLayout.LayoutParams(-1, -2))
 
         val titleView = TextView(activity).apply {
@@ -152,59 +142,116 @@ object SafeEngine {
             setLineSpacing(0f, 1.2f)
         }
         card.addView(messageView, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(8f) })
+        return Frame(dialog, card, head, titleView, messageView, d)
+    }
 
-        fun button(label: String, filled: Boolean) = TextView(activity).apply {
+    private fun button(activity: Activity, label: String, filled: Boolean): TextView {
+        val d = activity.resources.displayMetrics.density
+        val primary = ThemeUi.textPrimary(activity)
+        val neutral = (primary and 0x00FFFFFF) or 0x1F000000
+        return TextView(activity).apply {
             text = label
             gravity = Gravity.CENTER
             textSize = 15f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(if (filled) ThemeUi.onAccent(activity) else primary)
-            background = GradientDrawable().apply { cornerRadius = 12 * d; setColor(if (filled) accent else neutral) }
+            background = GradientDrawable().apply { cornerRadius = 12 * d; setColor(if (filled) ThemeUi.accent(activity) else neutral) }
             isClickable = true
             isFocusable = true
             maxLines = 1
         }
-        val cancel = button(activity.getString(R.string.cancel), false)
-        val proceed = button(activity.getString(risk.action), true)
+    }
+
+    private fun present(activity: Activity, f: Frame) {
+        f.dialog.setContentView(f.card)
+        f.dialog.window?.let { w ->
+            w.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+            val width = minOf(activity.resources.displayMetrics.widthPixels - f.px(48f), f.px(360f))
+            w.setLayout(width, android.view.WindowManager.LayoutParams.WRAP_CONTENT)
+            w.setDimAmount(0.55f)
+        }
+        f.card.scaleX = 0.92f
+        f.card.scaleY = 0.92f
+        f.card.alpha = 0f
+        f.dialog.setOnShowListener {
+            f.card.animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(220)
+                .setInterpolator(DecelerateInterpolator(1.6f)).start()
+        }
+        try { f.dialog.show() } catch (_: Exception) {}
+    }
+
+    class Action(val label: String, val filled: Boolean = false, val keepOpen: Boolean = false, val run: () -> Unit)
+
+    fun notice(activity: Activity, title: String, message: String, actions: List<Action>, onDismiss: () -> Unit = {}) {
+        if (activity.isFinishing || activity.isDestroyed) return
+        val f = frame(activity, title, message)
+        val column = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
+        for ((i, a) in actions.withIndex()) {
+            val b = button(activity, a.label, a.filled)
+            b.setOnClickListener {
+                if (!a.keepOpen) f.dialog.dismiss()
+                a.run()
+            }
+            column.addView(b, LinearLayout.LayoutParams(-1, f.px(46f)).apply { if (i > 0) topMargin = f.px(8f) })
+        }
+        f.card.addView(column, LinearLayout.LayoutParams(-1, -2).apply { topMargin = f.px(22f) })
+        f.dialog.setOnDismissListener { onDismiss() }
+        present(activity, f)
+    }
+
+    private fun show(activity: Activity, risk: Risk, subject: String, onCancel: (() -> Unit)?, onProceed: () -> Unit) {
+        val accent = ThemeUi.accent(activity)
+        val primary = ThemeUi.textPrimary(activity)
+        val neutral = (primary and 0x00FFFFFF) or 0x1F000000
+
+        val title = activity.getString(risk.title, subject)
+        var message = activity.getString(risk.message)
+        if (risk == Risk.LINK_PREVIEW && PrivacySettings.isTorEnabled(activity)) {
+            message += " " + activity.getString(R.string.safe_preview_tor)
+        }
+        val whyTitle = activity.getString(R.string.safe_why_title)
+        val whyMessage = activity.getString(R.string.safe_why_msg)
+
+        val f = frame(activity, title, message)
+        val help = TextView(activity).apply {
+            text = "?"
+            gravity = Gravity.CENTER
+            textSize = 15f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(primary)
+            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(neutral) }
+            contentDescription = whyTitle
+            isClickable = true
+            isFocusable = true
+        }
+        f.head.addView(help, FrameLayout.LayoutParams(f.px(30f), f.px(30f), Gravity.END or Gravity.TOP))
+
+        val cancel = button(activity, activity.getString(R.string.cancel), false)
+        val proceed = button(activity, activity.getString(risk.action), true)
         val buttons = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
-            addView(cancel, LinearLayout.LayoutParams(0, px(46f), 1f).apply { marginEnd = px(5f) })
-            addView(proceed, LinearLayout.LayoutParams(0, px(46f), 1f).apply { marginStart = px(5f) })
+            addView(cancel, LinearLayout.LayoutParams(0, f.px(46f), 1f).apply { marginEnd = f.px(5f) })
+            addView(proceed, LinearLayout.LayoutParams(0, f.px(46f), 1f).apply { marginStart = f.px(5f) })
         }
-        card.addView(buttons, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(22f) })
+        f.card.addView(buttons, LinearLayout.LayoutParams(-1, -2).apply { topMargin = f.px(22f) })
 
         var why = false
         help.setOnClickListener {
             why = !why
-            titleView.text = if (why) whyTitle else title
-            messageView.text = if (why) whyMessage else message
+            f.titleView.text = if (why) whyTitle else title
+            f.messageView.text = if (why) whyMessage else message
             help.setTextColor(if (why) ThemeUi.onAccent(activity) else primary)
             (help.background as? GradientDrawable)?.setColor(if (why) accent else neutral)
         }
         var proceeded = false
-        cancel.setOnClickListener { dialog.dismiss() }
+        cancel.setOnClickListener { f.dialog.dismiss() }
         proceed.setOnClickListener {
             proceeded = true
-            dialog.dismiss()
+            f.dialog.dismiss()
             onProceed()
         }
-        dialog.setOnDismissListener { if (!proceeded) onCancel?.invoke() }
-
-        dialog.setContentView(card)
-        dialog.window?.let { w ->
-            w.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-            val width = minOf(activity.resources.displayMetrics.widthPixels - px(48f), px(360f))
-            w.setLayout(width, android.view.WindowManager.LayoutParams.WRAP_CONTENT)
-            w.setDimAmount(0.55f)
-        }
-        card.scaleX = 0.92f
-        card.scaleY = 0.92f
-        card.alpha = 0f
-        dialog.setOnShowListener {
-            card.animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(220)
-                .setInterpolator(DecelerateInterpolator(1.6f)).start()
-        }
-        try { dialog.show() } catch (_: Exception) {}
+        f.dialog.setOnDismissListener { if (!proceeded) onCancel?.invoke() }
+        present(activity, f)
     }
 
     private fun lighten(color: Int): Int {

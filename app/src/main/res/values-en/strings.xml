@@ -111,6 +111,13 @@
     <string name="safe_tor_call_title">Call without Tor</string>
     <string name="safe_tor_call_msg">Live calls can\'t go through Tor. The other person won\'t see your IP address, but our call server will.</string>
     <string name="safe_tor_call_action">Continue</string>
+    <string name="safe_mode_tor_title">SafeEngine turned Tor off</string>
+    <string name="safe_mode_tor_msg">SinusChat closed twice in a row because the Tor module crashed, so SafeEngine turned it off. Routing through Tor is still on, so the app has no internet access right now: nothing will be sent without Tor. You can try starting Tor again or turn off routing through Tor, but then our server will see your IP address. The error report helps us find the cause.</string>
+    <string name="safe_mode_retry">Try again</string>
+    <string name="safe_mode_tor_off">Turn off routing through Tor</string>
+    <string name="safe_mode_copy">Copy error report</string>
+    <string name="safe_mode_copied">Error report copied</string>
+    <string name="priv_tor_safe_mode_desc">Turned off by SafeEngine after a crash, the app has no internet. Turn it off and on to try again.</string>
     <string name="safe_why_title">Why am I seeing this?</string>
     <string name="safe_why_msg">This may be a potential risk, but it doesn\'t have to be. Sinusoide wants SinusChat to be safe, so it tells you about what\'s about to happen. Take extra care when you see this message. You can turn it off in Settings → Notifications → Warn about potential risks.</string>
     <string name="safe_several_files">several files</string>

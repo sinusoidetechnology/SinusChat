@@ -200,7 +200,11 @@ class PrivacyOptionsView @JvmOverloads constructor(
         torSwitch?.let { sw ->
             if (sw.isChecked != tor) { sw.tag = "sync"; sw.isChecked = tor; sw.tag = "switch" }
         }
-        torSubtitle?.text = context.getString(if (tor) R.string.priv_tor_on_desc else R.string.priv_tor_desc)
+        torSubtitle?.text = context.getString(when {
+            tor && pl.sinusoide.sinuschat.util.SafeMode.isDisabled(context, pl.sinusoide.sinuschat.util.SafeMode.Part.TOR) -> R.string.priv_tor_safe_mode_desc
+            tor -> R.string.priv_tor_on_desc
+            else -> R.string.priv_tor_desc
+        })
         val route = showTorRoute && tor
         routeRow?.visibility = if (route) View.VISIBLE else View.GONE
         routeDivider?.visibility = if (route) View.VISIBLE else View.GONE
@@ -263,6 +267,7 @@ class PrivacyOptionsView @JvmOverloads constructor(
     private fun toggleTor(enabled: Boolean) {
         val ctx = context
         if (enabled) {
+            pl.sinusoide.sinuschat.util.SafeMode.enable(ctx, pl.sinusoide.sinuschat.util.SafeMode.Part.TOR)
             PrivacySettings.setTorEnabled(ctx, true)
             ctx.startActivity(Intent(ctx, pl.sinusoide.sinuschat.tor.TorStartupActivity::class.java))
             pl.sinusoide.sinuschat.tor.TorManager.start(ctx)

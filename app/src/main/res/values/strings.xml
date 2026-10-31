@@ -114,6 +114,13 @@
     <string name="safe_tor_call_title">Rozmowa bez Tora</string>
     <string name="safe_tor_call_msg">Rozmów na żywo nie da się przesłać przez Tor. Rozmówca nie zobaczy Twojego adresu IP, ale nasz serwer połączeń tak.</string>
     <string name="safe_tor_call_action">Kontynuuj</string>
+    <string name="safe_mode_tor_title">SafeEngine wyłączył Tora</string>
+    <string name="safe_mode_tor_msg">SinusChat dwa razy z rzędu zamknął się przez awarię modułu Tor, więc SafeEngine go wyłączył. Routing przez Tor jest nadal włączony, dlatego aplikacja nie ma teraz dostępu do internetu: nic nie zostanie wysłane z pominięciem Tora. Możesz spróbować uruchomić Tora ponownie albo wyłączyć routing przez Tor, ale wtedy nasz serwer zobaczy Twój adres IP. Raport błędu pomoże nam znaleźć przyczynę.</string>
+    <string name="safe_mode_retry">Spróbuj ponownie</string>
+    <string name="safe_mode_tor_off">Wyłącz routing przez Tor</string>
+    <string name="safe_mode_copy">Kopiuj raport błędu</string>
+    <string name="safe_mode_copied">Skopiowano raport błędu</string>
+    <string name="priv_tor_safe_mode_desc">Wyłączony przez SafeEngine po awarii, aplikacja nie ma internetu. Wyłącz i włącz, aby spróbować ponownie.</string>
     <string name="safe_why_title">Dlaczego widzę to powiadomienie?</string>
     <string name="safe_why_msg">Możliwe, że to potencjalne zagrożenie, lecz nie musi nim być. Sinusoide chce, aby SinusChat było bezpieczne, dlatego informuje Cię o sytuacji, która ma się zdarzyć. Zachowaj szczególną ostrożność, widząc to powiadomienie. Możesz je wyłączyć w Ustawienia → Powiadomienia → Informuj o potencjalnym zagrożeniu.</string>
     <string name="safe_several_files">kilka plików</string>

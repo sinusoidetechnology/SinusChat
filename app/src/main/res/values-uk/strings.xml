@@ -114,6 +114,13 @@
     <string name="safe_tor_call_title">Дзвінок без Tor</string>
     <string name="safe_tor_call_msg">Дзвінки в реальному часі неможливо передати через Tor. Співрозмовник не побачить вашої IP-адреси, але наш сервер дзвінків побачить.</string>
     <string name="safe_tor_call_action">Продовжити</string>
+    <string name="safe_mode_tor_title">SafeEngine вимкнув Tor</string>
+    <string name="safe_mode_tor_msg">SinusChat двічі поспіль закрився через збій модуля Tor, тому SafeEngine його вимкнув. Маршрутизація через Tor досі ввімкнена, тож застосунок зараз не має доступу до інтернету: нічого не буде надіслано в обхід Tor. Ви можете спробувати запустити Tor знову або вимкнути маршрутизацію через Tor, але тоді наш сервер побачить вашу IP-адресу. Звіт про помилку допоможе нам знайти причину.</string>
+    <string name="safe_mode_retry">Спробувати знову</string>
+    <string name="safe_mode_tor_off">Вимкнути маршрутизацію через Tor</string>
+    <string name="safe_mode_copy">Копіювати звіт про помилку</string>
+    <string name="safe_mode_copied">Звіт про помилку скопійовано</string>
+    <string name="priv_tor_safe_mode_desc">Вимкнено SafeEngine після збою, застосунок не має інтернету. Вимкніть і ввімкніть, щоб спробувати знову.</string>
     <string name="safe_why_title">Чому я бачу це сповіщення?</string>
     <string name="safe_why_msg">Можливо, це потенційна загроза, але не обов’язково. Sinusoide хоче, щоб SinusChat був безпечним, тому повідомляє вас про те, що має статися. Будьте особливо обережні, коли бачите це сповіщення. Вимкнути його можна в Налаштування → Сповіщення → Попереджати про потенційну загрозу.</string>
     <string name="safe_several_files">кілька файлів</string>

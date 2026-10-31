@@ -40,6 +40,7 @@ class SinusApp : Application() {
         DbKeyManager.dropLegacyBio(this)
         DbKeyManager.initTransparent(this)
         if (android.os.Build.VERSION.SDK_INT < 28 || Application.getProcessName() == packageName) {
+            pl.sinusoide.sinuschat.util.SafeMode.checkOnStart(this)
             pl.sinusoide.sinuschat.data.SinusChatDatabase.warmUp(this)
             if (SetupActivity.isSetupDone(this)) pl.sinusoide.sinuschat.pclink.PcLinkServer.init(this)
         }

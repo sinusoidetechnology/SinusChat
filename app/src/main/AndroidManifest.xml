@@ -169,6 +169,14 @@
             android:foregroundServiceType="remoteMessaging" />
 
         <service
+            android:name="org.torproject.jni.TorService"
+            tools:node="remove" />
+
+        <service
+            android:name=".tor.SinusTorService"
+            android:exported="false" />
+
+        <service
             android:name=".call.OngoingCallService"
             android:exported="false"
             android:foregroundServiceType="microphone|mediaProjection" />

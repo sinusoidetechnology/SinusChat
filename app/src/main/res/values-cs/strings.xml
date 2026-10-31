@@ -114,6 +114,13 @@
     <string name="safe_tor_call_title">Hovor bez Toru</string>
     <string name="safe_tor_call_msg">Hovory v reálném čase nelze vést přes Tor. Druhá strana vaši IP adresu neuvidí, ale náš server pro hovory ano.</string>
     <string name="safe_tor_call_action">Pokračovat</string>
+    <string name="safe_mode_tor_title">SafeEngine vypnul Tor</string>
+    <string name="safe_mode_tor_msg">SinusChat se dvakrát po sobě zavřel kvůli pádu modulu Tor, a proto ho SafeEngine vypnul. Směrování přes Tor je stále zapnuté, takže aplikace teď nemá přístup k internetu: nic se neodešle mimo Tor. Můžete zkusit Tor spustit znovu, nebo směrování přes Tor vypnout, ale pak náš server uvidí vaši IP adresu. Zpráva o chybě nám pomůže najít příčinu.</string>
+    <string name="safe_mode_retry">Zkusit znovu</string>
+    <string name="safe_mode_tor_off">Vypnout směrování přes Tor</string>
+    <string name="safe_mode_copy">Kopírovat zprávu o chybě</string>
+    <string name="safe_mode_copied">Zpráva o chybě zkopírována</string>
+    <string name="priv_tor_safe_mode_desc">Vypnuto SafeEnginem po pádu, aplikace nemá internet. Vypněte a zapněte pro nový pokus.</string>
     <string name="safe_why_title">Proč vidím toto upozornění?</string>
     <string name="safe_why_msg">Může jít o potenciální riziko, ale nemusí. Sinusoide chce, aby byl SinusChat bezpečný, a proto vás upozorňuje na to, co se chystá. Při tomto upozornění buďte obzvlášť opatrní. Vypnout ho můžete v Nastavení → Oznámení → Upozorňovat na možná rizika.</string>
     <string name="safe_several_files">několik souborů</string>

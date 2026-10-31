@@ -181,6 +181,15 @@ object AvatarHelper {
         Color.parseColor(PALETTE[0])
     }
 
+    private fun isDestroyed(context: android.content.Context): Boolean {
+        var c: android.content.Context? = context
+        while (c is android.content.ContextWrapper) {
+            if (c is android.app.Activity) return c.isDestroyed || c.isFinishing
+            c = c.baseContext
+        }
+        return false
+    }
+
     private val pendingGroupAvatars = java.util.WeakHashMap<android.widget.ImageView, (android.widget.ImageView) -> Unit>()
 
     fun onAvatarDecrypted() {
@@ -200,6 +209,7 @@ object AvatarHelper {
     ) {
         val safeName = name.ifEmpty { "G" }
         pendingGroupAvatars.remove(imageView)
+        if (isDestroyed(imageView.context) || isDestroyed(context)) return
         com.bumptech.glide.Glide.with(imageView).clear(imageView)
         val url = if (pl.sinusoide.sinuschat.crypto.ProfileCrypto.isEncryptedAvatar(rawUrl)) {
             groupId?.let { pl.sinusoide.sinuschat.crypto.ProfileCrypto.displayAvatar(context, it, rawUrl) }.also {

@@ -110,6 +110,13 @@
     <string name="safe_tor_call_title">不經 Tor 通話</string>
     <string name="safe_tor_call_msg">即時通話無法透過 Tor 傳送。對方看不到你的 IP 位址，但我們的通話伺服器可以。</string>
     <string name="safe_tor_call_action">繼續</string>
+    <string name="safe_mode_tor_title">SafeEngine 已關閉 Tor</string>
+    <string name="safe_mode_tor_msg">SinusChat 因 Tor 模組當機而連續兩次關閉，所以 SafeEngine 將它關閉了。經由 Tor 路由仍然開啟，因此應用程式目前無法連上網路：任何內容都不會繞過 Tor 傳送。你可以嘗試重新啟動 Tor，或關閉經由 Tor 路由，但這樣我們的伺服器就會看到你的 IP 位址。錯誤報告能幫助我們找出原因。</string>
+    <string name="safe_mode_retry">再試一次</string>
+    <string name="safe_mode_tor_off">關閉經由 Tor 路由</string>
+    <string name="safe_mode_copy">複製錯誤報告</string>
+    <string name="safe_mode_copied">已複製錯誤報告</string>
+    <string name="priv_tor_safe_mode_desc">因當機已被 SafeEngine 關閉，應用程式無法連上網路。關閉後再開啟即可重試。</string>
     <string name="safe_why_title">為什麼會看到這個？</string>
     <string name="safe_why_msg">這可能有潛在風險，但不一定。Sinusoide 希望 SinusChat 安全無虞，所以會告訴你即將發生的事。看到這則訊息時請格外小心。你可以在「設定」→「通知」→「提醒潛在風險」中關閉它。</string>
     <string name="safe_several_files">多個檔案</string>

@@ -69,18 +69,23 @@ class ModelInferenceService : Service() {
                 MSG_SEND_MESSAGE -> handleSendMessage(msg)
                 MSG_STOP         -> stopGeneration()
                 MSG_RESET_CHAT   -> handleResetChat(msg)
-                MSG_CLOSE        -> { stopGeneration(); executor.execute { closeModel() }; stopSelf() }
+                MSG_CLOSE        -> { stopGeneration(); runOnWorker { closeModel() }; stopSelf() }
             }
         }
     }
     private val messenger = Messenger(incomingHandler)
+
+    private fun runOnWorker(block: () -> Unit) {
+        if (executor.isShutdown) return
+        try { executor.execute(block) } catch (_: java.util.concurrent.RejectedExecutionException) {}
+    }
 
     override fun onBind(intent: Intent): IBinder = messenger.binder
 
     override fun onDestroy() {
         super.onDestroy()
         stopGeneration()
-        executor.execute { closeModel() }
+        runOnWorker { closeModel() }
         executor.shutdown()
     }
 
@@ -95,7 +100,7 @@ class ModelInferenceService : Service() {
         val topP        = msg.data?.getFloat(KEY_TOP_P, 0.95f)?.toDouble() ?: 0.95
         val maxTokens   = msg.data?.getInt(KEY_MAX_TOKENS, 4000) ?: 4000
 
-        executor.execute {
+        runOnWorker {
             try {
                 closeModel()
                 val backend: Backend = if (useGpu) Backend.GPU() else Backend.CPU()
@@ -135,9 +140,9 @@ class ModelInferenceService : Service() {
         val roles = msg.data?.getStringArray(KEY_HISTORY_ROLES)
         val texts = msg.data?.getStringArray(KEY_HISTORY_TEXTS)
         stopGeneration()
-        executor.execute {
+        runOnWorker {
             val eng = engine
-            if (eng == null) { sendError(replyTo, "MODEL_NOT_READY"); return@execute }
+            if (eng == null) { sendError(replyTo, "MODEL_NOT_READY"); return@runOnWorker }
             try {
                 try { conversation?.close() } catch (_: Throwable) {}
                 conversation = null
@@ -175,7 +180,7 @@ class ModelInferenceService : Service() {
         val imgPath  = msg.data?.getString(KEY_IMAGE_PATH)
         val thinking = msg.data?.getBoolean(KEY_THINKING, false) ?: false
 
-        executor.execute {
+        runOnWorker {
             try {
                 val contentsList = mutableListOf<Content>()
 

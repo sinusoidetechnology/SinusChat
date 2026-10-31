@@ -343,6 +343,9 @@ class MainActivity : AppCompatActivity() {
             pl.sinusoide.sinuschat.util.AppExecutor.io { pl.sinusoide.sinuschat.util.AutoDelete.check(this) }
         else pl.sinusoide.sinuschat.util.AutoDelete.touch(this)
         maybeAskForBackup()
+        window.decorView.postDelayed({
+            if (!isFinishing && !isDestroyed) pl.sinusoide.sinuschat.util.SafeMode.showPending(this)
+        }, 600L)
         clearNotifications()
         enableNfcReader()
         refreshMissedCallsBadge()

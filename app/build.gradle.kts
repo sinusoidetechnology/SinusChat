@@ -14,15 +14,19 @@ fun fcmProp(key: String) = (localProps.getProperty(key) ?: "").trim().replace("\
 
 android {
     namespace = "pl.sinusoide.sinuschat"
-    compileSdk = 36
+    compileSdk {
+        version = release(37) {
+            minorApiLevel = 1
+        }
+    }
     ndkVersion = "30.0.16248370"
 
     defaultConfig {
         applicationId = "pl.sinusoide.sinuschat"
         minSdk = 26
         targetSdk = 36
-        versionCode = 24
-        versionName = "1.2.1"
+        versionCode = 25
+        versionName = "1.2.2"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         buildConfigField("String", "FCM_API_KEY", "\"${fcmProp("fcm.apiKey")}\"")
@@ -156,7 +160,7 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.squareup.okhttp3:okhttp-sse:4.12.0")
 
-    implementation("info.guardianproject:tor-android:0.4.8.18")
+    implementation("info.guardianproject:tor-android:0.4.9.14")
     implementation("info.guardianproject:jtorctl:0.4.5.7")
 
     implementation("androidx.work:work-runtime-ktx:2.9.0")
