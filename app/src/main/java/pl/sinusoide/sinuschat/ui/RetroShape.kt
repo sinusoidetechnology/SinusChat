@@ -73,7 +73,12 @@ object RetroShape {
             }
             if ((v is Shapeable || v is NavigationBarView) && v.getTag(R.id.retro_shape_root) != true) {
                 v.setTag(R.id.retro_shape_root, true)
-                if (v is Shapeable) v.shapeAppearanceModel = v.shapeAppearanceModel.withCornerSize(radius)
+                if (v is Shapeable) {
+                    try {
+                        v.shapeAppearanceModel = v.shapeAppearanceModel.withCornerSize(radius)
+                    } catch (_: IllegalStateException) {
+                    }
+                }
                 if (v is NavigationBarView) v.itemActiveIndicatorShapeAppearance =
                     ShapeAppearanceModel.builder().setAllCornerSizes(radius).build()
             }
