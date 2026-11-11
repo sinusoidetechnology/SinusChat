@@ -64,6 +64,19 @@ class AboutFragment : Fragment() {
         if (result.resultCode == android.app.Activity.RESULT_OK) action?.invoke()
     }
 
+    fun openFromPc(section: String) {
+        val ctx = context ?: return
+        when (section) {
+            pl.sinusoide.sinuschat.link.LinkFrame.SECTION_ACCOUNT ->
+                requireAuthThen { startActivity(Intent(ctx, AccountSettingsActivity::class.java)) }
+            pl.sinusoide.sinuschat.link.LinkFrame.SECTION_PRIVACY -> startActivity(Intent(ctx, PrivacySettingsActivity::class.java))
+            pl.sinusoide.sinuschat.link.LinkFrame.SECTION_INTERNET -> startActivity(Intent(ctx, InternetSettingsActivity::class.java))
+            pl.sinusoide.sinuschat.link.LinkFrame.SECTION_BACKUP -> startActivity(Intent(ctx, BackupActivity::class.java))
+            pl.sinusoide.sinuschat.link.LinkFrame.SECTION_REPORT_DESKTOP ->
+                startActivity(Intent(ctx, ReportProblemActivity::class.java).putExtra(ReportProblemActivity.EXTRA_DESKTOP, true))
+        }
+    }
+
     private fun requireAuthThen(action: () -> Unit) {
         val ctx = requireContext()
         if (!LockManager.hasPin(ctx)) { action(); return }
@@ -274,6 +287,7 @@ class AboutFragment : Fragment() {
     override fun onPause() {
         super.onPause()
         if (searchOpen && !openingResult) closeSearch(animate = false)
+        try { requireContext().unregisterReceiver(profileReceiver) } catch (_: Exception) {}
     }
 
     private fun openSearch() {
@@ -584,6 +598,31 @@ class AboutFragment : Fragment() {
         super.onResume()
         openingResult = false
         if (isAdded) refreshStatusSubtitles()
+        try {
+            requireContext().registerReceiver(
+                profileReceiver,
+                android.content.IntentFilter(pl.sinusoide.sinuschat.pclink.PcLinkProfile.ACTION_PROFILE_CHANGED),
+                android.content.Context.RECEIVER_NOT_EXPORTED
+            )
+        } catch (_: Exception) {}
+        if (isAdded && view != null) showLocalProfile()
+    }
+
+    private val profileReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(c: android.content.Context?, i: android.content.Intent?) {
+            if (isAdded && view != null) showLocalProfile()
+        }
+    }
+
+    private fun showLocalProfile() {
+        val ctx = context ?: return
+        val name = SetupActivity.getUserDisplayName(ctx)
+        tvName.text = name.ifEmpty { getString(R.string.not_set) }
+        val size = (96 * resources.displayMetrics.density).toInt()
+        avatarLetter.setImageBitmap(AvatarHelper.createLetterBitmap(AvatarHelper.initialOf(name), AvatarHelper.getMyColor(ctx), size))
+        val photo = AvatarHelper.loadAvatarInto(ctx, avatarImage)
+        avatarImage.visibility = if (photo) View.VISIBLE else View.GONE
+        avatarLetter.visibility = if (photo) View.GONE else View.VISIBLE
     }
 
     private fun refreshStatusSubtitles() {

@@ -641,10 +641,10 @@ class MessageAdapter(
                 } else {
                     pl.sinusoide.sinuschat.util.AppExecutor.io {
                         try {
-                            val bytes = pl.sinusoide.sinuschat.util.FileUploader
-                                .downloadVoiceBlocking(ctx, fileUrl, item.fileKey) ?: return@io
-                            if (bytes.isEmpty()) return@io
-                            cacheFile.writeBytes(bytes)
+                            val part = java.io.File(cacheFile.parentFile, cacheFile.name + ".part")
+                            if (!pl.sinusoide.sinuschat.util.FileUploader
+                                    .downloadVoiceToFile(ctx, fileUrl, item.fileKey, part)) { part.delete(); return@io }
+                            if (!part.renameTo(cacheFile)) { part.copyTo(cacheFile, overwrite = true); part.delete() }
                             pl.sinusoide.sinuschat.util.AppExecutor.main {
                                 if (currentlyPlayingId == item.id) playFrom()
                             }
@@ -1130,8 +1130,29 @@ class MessageAdapter(
             setOnClickListener { onUploadRetry?.invoke(item) }
         }
 
+    private fun addMediaChip(iv: View, item: MessageEntity, fallback: String) {
+        val parent = iv.parent as? FrameLayout ?: return
+        for (i in parent.childCount - 1 downTo 0) if (parent.getChildAt(i).tag == VIDEO_CHIP_TAG) parent.removeViewAt(i)
+        val d = iv.resources.displayMetrics.density
+        parent.addView(pl.sinusoide.sinuschat.ui.TransferLabel(iv.context, item.id, fallback).apply {
+            tag = VIDEO_CHIP_TAG
+            textSize = 11.5f
+            setTextColor(Color.WHITE)
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            maxLines = 1
+            background = android.graphics.drawable.GradientDrawable().apply {
+                cornerRadius = 10 * d; setColor(0x8C000000.toInt())
+            }
+            setPadding((8 * d).toInt(), (3 * d).toInt(), (8 * d).toInt(), (3 * d).toInt())
+        }, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.START).apply {
+            leftMargin = ((iv.layoutParams as? ViewGroup.MarginLayoutParams)?.leftMargin ?: 0) + (10 * d).toInt()
+            bottomMargin = (10 * d).toInt()
+        })
+    }
+
     private fun showUploadOverlay(holder: VH, item: MessageEntity) {
         val box = holder.imageOverlay ?: return
+        holder.image?.takeIf { !MediaManager.isVideo(item.attachmentName.orEmpty()) }?.let { addMediaChip(it, item, "") }
         box.removeAllViews()
         box.visibility = View.VISIBLE
         box.addView(
@@ -1220,6 +1241,7 @@ class MessageAdapter(
         box.removeAllViews()
         box.visibility = View.VISIBLE
         if (AttachmentDownloader.isActive(item.id)) {
+            holder.image?.let { addMediaChip(it, item, "") }
             box.addView(downloadRing(ctx, item, Color.WHITE, 0x73000000), FrameLayout.LayoutParams(-1, -1))
         } else {
             box.addView(ImageView(ctx).apply {
@@ -1273,19 +1295,7 @@ class MessageAdapter(
         val parts = mutableListOf<String>()
         info?.durationMs?.takeIf { it > 0 }?.let { parts += thumbs.formatDuration(it) }
         if (local == null && !placeholder) info?.sizeBytes?.takeIf { it > 0 }?.let { parts += MediaManager.formatSize(it) }
-        (iv.parent as? FrameLayout)?.takeIf { parts.isNotEmpty() && !gone }?.addView(TextView(ctx).apply {
-            tag = VIDEO_CHIP_TAG
-            text = parts.joinToString("  ·  ")
-            textSize = 11.5f
-            setTextColor(Color.WHITE)
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
-            background = android.graphics.drawable.GradientDrawable().apply {
-                cornerRadius = 10 * d; setColor(0x8C000000.toInt())
-            }
-            setPadding((8 * d).toInt(), (3 * d).toInt(), (8 * d).toInt(), (3 * d).toInt())
-        }, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.START).apply {
-            leftMargin = (10 * d).toInt(); bottomMargin = (10 * d).toInt()
-        })
+        if (!gone) addMediaChip(iv, item, parts.joinToString("  ·  "))
 
         val open = View.OnClickListener {
             when {

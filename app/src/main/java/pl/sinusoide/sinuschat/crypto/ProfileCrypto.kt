@@ -136,6 +136,7 @@ object ProfileCrypto {
             }
         } catch (_: Exception) { return }
         AppExecutor.io { pushNewKey(app) }
+        pl.sinusoide.sinuschat.pclink.PcLinkHub.onProfileChanged()
     }
 
     fun onKeyUpdate(ctx: Context, sender: String, payload: org.json.JSONObject) {
@@ -357,6 +358,9 @@ object ProfileCrypto {
         }
     } catch (_: Exception) { null }
 
+    fun avatarReady(ctx: Context, hash: String, url: String): Boolean =
+        !isEncryptedAvatar(url) || plainFile(ctx, hash, url).exists()
+
     private fun plainFile(ctx: Context, hash: String, url: String): File {
         val tag = E2EManager.sha256(url).take(12)
         return File(File(ctx.filesDir, AVATAR_DIR), "${hash.take(32)}_$tag.jpg")
@@ -403,6 +407,7 @@ object ProfileCrypto {
             out.parentFile?.mkdirs()
             out.parentFile?.listFiles { f -> f.name.startsWith("${hash.take(32)}_") }?.forEach { it.delete() }
             out.writeBytes(jpeg)
+            pl.sinusoide.sinuschat.pclink.PcLinkHub.onAvatarChanged(hash)
             AppExecutor.main {
                 pl.sinusoide.sinuschat.util.AvatarHelper.onAvatarDecrypted()
                 ctx.sendBroadcast(android.content.Intent("pl.sinusoide.sinuschat.REFRESH_CONVERSATIONS").setPackage(ctx.packageName))

@@ -17,7 +17,7 @@ object PcLinkStore {
     private const val K_PUBLIC = "identity_public"
     private const val K_PCS = "pcs"
 
-    data class Pc(val key: String, val name: String, val pairedAt: Long, val lastSeen: Long, val app: String = "") {
+    data class Pc(val key: String, val name: String, val pairedAt: Long, val lastSeen: Long, val app: String = "", val proximity: Boolean = false) {
         val keyBytes: ByteArray get() = decode(key)
         val isWatch: Boolean get() = app.contains("watch", true) || app.contains("wear", true)
         val id: String get() = LinkCrypto.fingerprint(keyBytes)
@@ -58,7 +58,7 @@ object PcLinkStore {
             val o = arr.optJSONObject(i) ?: return@mapNotNull null
             val key = o.optString("key")
             if (key.isEmpty()) null
-            else Pc(key, o.optString("name"), o.optLong("pairedAt"), o.optLong("lastSeen"), o.optString("app"))
+            else Pc(key, o.optString("name"), o.optLong("pairedAt"), o.optLong("lastSeen"), o.optString("app"), o.optBoolean("proximity"))
         }
     }
 
@@ -67,7 +67,7 @@ object PcLinkStore {
         val arr = JSONArray()
         list.forEach {
             arr.put(JSONObject().put("key", it.key).put("name", it.name)
-                .put("pairedAt", it.pairedAt).put("lastSeen", it.lastSeen).put("app", it.app))
+                .put("pairedAt", it.pairedAt).put("lastSeen", it.lastSeen).put("app", it.app).put("proximity", it.proximity))
         }
         prefs(ctx).edit().putString(K_PCS, arr.toString()).commit()
     }
@@ -83,12 +83,12 @@ object PcLinkStore {
     }
 
     @Synchronized
-    fun update(ctx: Context, key: String, name: String? = null, lastSeen: Long? = null, app: String? = null) {
+    fun update(ctx: Context, key: String, name: String? = null, lastSeen: Long? = null, app: String? = null, proximity: Boolean? = null) {
         val list = pcs(ctx)
         if (list.none { it.key == key }) return
         save(ctx, list.map {
             if (it.key != key) it
-            else it.copy(name = name ?: it.name, lastSeen = lastSeen ?: it.lastSeen, app = app ?: it.app)
+            else it.copy(name = name ?: it.name, lastSeen = lastSeen ?: it.lastSeen, app = app ?: it.app, proximity = proximity ?: it.proximity)
         })
     }
 
@@ -115,6 +115,12 @@ object PcLinkStore {
         val p = pending ?: return null
         if (System.currentTimeMillis() > p.expiresAt) { pending = null; return null }
         return if (LinkCrypto.equal(p.pcKey, pcKey)) p.token else null
+    }
+
+    fun pairingTokens(): List<ByteArray> {
+        val p = pending ?: return emptyList()
+        if (System.currentTimeMillis() > p.expiresAt) { pending = null; return emptyList() }
+        return listOf(p.token)
     }
 
     fun pairingDone(pcKey: ByteArray) {

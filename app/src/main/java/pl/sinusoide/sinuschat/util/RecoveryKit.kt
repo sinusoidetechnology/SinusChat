@@ -164,20 +164,11 @@ object RecoveryKit {
 
     private fun drawLogo(ctx: Context, c: Canvas, tile: RectF) {
         c.drawRoundRect(tile, tile.width() * 0.26f, tile.width() * 0.26f, fill(Color.BLACK))
-        val bmp = try {
-            BitmapFactory.decodeResource(ctx.resources, R.drawable.logo_sinuschat,
-                BitmapFactory.Options().apply { inScaled = false })
-        } catch (_: Throwable) { null } ?: return
         val inner = RectF(tile).apply { inset(tile.width() * 0.17f, tile.height() * 0.17f) }
-        val scale = minOf(inner.width() / LOGO_WAVE.width(), inner.height() / LOGO_WAVE.height())
-        val w = LOGO_WAVE.width() * scale
-        val h = LOGO_WAVE.height() * scale
-        val dst = RectF(inner.centerX() - w / 2f, inner.centerY() - h / 2f,
-            inner.centerX() + w / 2f, inner.centerY() + h / 2f)
-        c.drawBitmap(bmp, LOGO_WAVE, dst, Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG))
+        val src = pl.sinusoide.sinuschat.ui.SinusLogo.SINUSOIDE_BOUNDS
+        val m = android.graphics.Matrix().apply { setRectToRect(src, inner, android.graphics.Matrix.ScaleToFit.CENTER) }
+        c.drawPath(pl.sinusoide.sinuschat.ui.SinusLogo.sinusoide().apply { transform(m) }, fill(pl.sinusoide.sinuschat.ui.SinusLogo.CYAN))
     }
-
-    private val LOGO_WAVE = Rect(45, 111, 1085, 744)
 
     private fun date(ctx: Context, ms: Long): String {
         val locale = ctx.resources.configuration.locales[0]

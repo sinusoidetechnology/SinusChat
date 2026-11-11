@@ -83,11 +83,19 @@ object ProfilePhotoSheet {
         }
         val chooseChip = chip(ctx.getString(R.string.group_photo_choose), R.drawable.ic_image, accent)
         val removeChip = chip(ctx.getString(R.string.group_photo_remove), R.drawable.ic_delete, red)
+        val downloadChip = chip(ctx.getString(R.string.avatar_download), R.drawable.ic_download, accent)
         root.addView(LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER
             addView(chooseChip)
             addView(removeChip, LinearLayout.LayoutParams(-2, -2).apply { marginStart = (10 * d).toInt() })
-        }, LinearLayout.LayoutParams(-2, -2).apply { bottomMargin = (20 * d).toInt() })
+        }, LinearLayout.LayoutParams(-2, -2).apply { bottomMargin = (10 * d).toInt() })
+        root.addView(downloadChip, LinearLayout.LayoutParams(-2, -2).apply { bottomMargin = (20 * d).toInt() })
+        downloadChip.setOnClickListener {
+            val photo: Any? = pendingPhoto ?: currentPhoto?.takeIf { !removePhoto }
+            val color = pickedColor
+            pl.sinusoide.sinuschat.util.AvatarSaver.saveFrom(activity, photo,
+                { pl.sinusoide.sinuschat.util.AvatarSaver.letter(name, color) }, name.ifBlank { "SinusChat" })
+        }
 
         root.addView(TextView(ctx).apply {
             text = ctx.getString(R.string.profile_initial_color)

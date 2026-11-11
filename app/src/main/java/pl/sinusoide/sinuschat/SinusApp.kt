@@ -65,6 +65,8 @@ class SinusApp : Application() {
                     (svc.onDemand(app) || !svc.isRunning)) {
                     svc.start(app)
                 }
+                pl.sinusoide.sinuschat.pclink.PcLinkServer.resume()
+                pl.sinusoide.sinuschat.pclink.PcLinkService.update(app)
             }
             override fun onStop(owner: LifecycleOwner) {
                 isForeground = false
@@ -93,7 +95,7 @@ class SinusApp : Application() {
                 top = java.lang.ref.WeakReference(a)
                 if (check(a)) {
                     resumePendingLink(a)
-                    offerUpdate(a)
+                    if (!offerTerms(a)) offerUpdate(a)
                 }
             }
             override fun onActivityStarted(a: Activity) {
@@ -154,6 +156,7 @@ class SinusApp : Application() {
                     return false
                 }
                 if (dbLocked) {
+                    if (a is pl.sinusoide.sinuschat.messenger.ForwardActivity) return false
                     ScreenLockActivity.start(a, ScreenLockActivity.MODE_UNLOCK)
                     a.finish()
                     return false
@@ -176,19 +179,29 @@ class SinusApp : Application() {
         if (PendingLink.resume(a)) pl.sinusoide.sinuschat.util.LinkLog.add(a, "resume", a.javaClass.simpleName)
     }
 
+    private fun offerTerms(a: Activity): Boolean {
+        if (a is TermsUpdateActivity) return true
+        if (a is QrLinkActivity || a.isFinishing || !SetupActivity.isSetupDone(a) || SetupActivity.wizardStep(a) != null) return false
+        pl.sinusoide.sinuschat.util.TermsGate.refresh(a) { showPending() }
+        if (!pl.sinusoide.sinuschat.util.TermsGate.required(a)) return false
+        TermsUpdateActivity.open(a)
+        return true
+    }
+
     private fun offerUpdate(a: Activity) {
-        if (a is QrLinkActivity || a.isFinishing || !SetupActivity.isSetupDone(a) || SetupActivity.wizardStep(a) != null) return
-        pl.sinusoide.sinuschat.util.UpdateChecker.check(a) { showPendingUpdate() }
+        if (a is QrLinkActivity || a is TermsUpdateActivity || a.isFinishing || !SetupActivity.isSetupDone(a) || SetupActivity.wizardStep(a) != null) return
+        if (pl.sinusoide.sinuschat.util.TermsGate.required(a)) return
+        pl.sinusoide.sinuschat.util.UpdateChecker.check(a) { showPending() }
         pl.sinusoide.sinuschat.util.UpdateChecker.takePending(a)?.let { UpdateActivity.open(a, it) }
     }
 
-    private fun showPendingUpdate() {
+    private fun showPending() {
         val a = top?.get() ?: return
         val resumed = (a as? androidx.lifecycle.LifecycleOwner)?.lifecycle?.currentState
             ?.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED) == true
         if (!isForeground || !resumed || a.isFinishing || exempt(a)) return
         if (LockManager.hasPin(a) && (!LockManager.sessionUnlocked || DbKeyManager.needsPinUnlock(a))) return
-        offerUpdate(a)
+        if (!offerTerms(a)) offerUpdate(a)
     }
 
     private val hidden = java.util.WeakHashMap<Activity, Boolean>()

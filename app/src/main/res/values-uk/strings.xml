@@ -183,6 +183,10 @@
     <string name="view_once_already_opened">Цей файл уже відкрили й видалили</string>
     <string name="view_once_not_in_groups">Одноразові файли працюють лише в приватних розмовах</string>
     <string name="view_once_media_only">Одноразово можна надсилати лише фото й відео</string>
+    <string name="original_quality">Оригінальна якість</string>
+    <string name="original_quality_on">Оригінальна якість: надсилається без стиснення, у повній роздільності</string>
+    <string name="original_quality_off">Стандартна якість: менший файл, швидше надсилання</string>
+    <string name="transfer_speed_eta">%1$s/s · залишилось %2$s</string>
     <string name="error_connection">Помилка з’єднання</string>
     <string name="error_sending">Помилка надсилання</string>
     <string name="error_rename">Помилка перейменування</string>
@@ -208,6 +212,8 @@
     <string name="notif_bg_listening">Очікування повідомлень</string>
     <string name="notif_bg_offline">Режим офлайн</string>
     <string name="notif_bg_checking">Перевірка нових повідомлень</string>
+    <string name="bg_data_off_title">Фонові дані вимкнено</string>
+    <string name="bg_data_off_text">Повідомлення надійдуть лише після відкриття SinusChat. Торкніться, щоб дозволити фонові дані.</string>
     <string name="notif_added_to_group_format">Додано до групи: %s</string>
     <string name="account">Акаунт</string>
     <string name="account_sub">Керування акаунтом</string>
@@ -348,6 +354,7 @@
     <string name="session_moved_title">Сеанс перенесено</string>
     <string name="session_moved_desc">Ваш акаунт тепер активний на новому пристрої. З цього пристрою безпечно виконано вихід — ваші дані цілі.</string>
     <string name="session_moved_hint">Якщо це входили не ви — змініть пароль до своєї електронної скриньки.</string>
+    <string name="session_moved_check_failed">Не вдалося перевірити сесію. Перевірте інтернет і спробуйте ще раз.</string>
     <string name="session_moved_cd">Сеанс перенесено на інший пристрій</string>
     <string name="app_theme_title">ТЕМА ЗАСТОСУНКУ</string>
     <string name="themes_title">Теми</string>
@@ -443,6 +450,10 @@
     <string name="disappearing_trigger_received">Від отримання</string>
     <string name="last_seen_prefix">Був(-ла) у мережі </string>
     <string name="just_now">щойно</string>
+    <string name="last_seen_short">У мережі %1$s</string>
+    <string name="ago_min_short">%1$d хв тому</string>
+    <string name="ago_hour_short">%1$d год тому</string>
+    <string name="ago_month_short">%1$d міс. тому</string>
     <string name="peer_screenshot_attempt">Співрозмовник намагався зробити знімок екрана</string>
     <plurals name="files_plural">
         <item quantity="one">файл</item>
@@ -891,6 +902,11 @@
     <string name="call_remote_video_on">%1$s увімкнув(-ла) камеру</string>
     <string name="call_turn_on_my_camera">Увімкнути мою</string>
     <string name="call_camera_permission">Немає доступу до камери</string>
+    <string name="call_route_phone">Телефон</string>
+    <string name="call_route_speaker">Динамік</string>
+    <string name="call_route_bluetooth">Bluetooth</string>
+    <string name="call_camera_failed">Не вдалося увімкнути камеру</string>
+    <string name="peer_screenshot_attempt_call">Співрозмовник намагався зробити знімок екрана під час дзвінка</string>
     <string name="call_video_busy">Зачекайте мить і спробуйте знову</string>
     <string name="lock_pin_placeholder">Введіть PIN</string>
     <string name="lock_show_dots">Показувати крапки PIN-коду</string>
@@ -2064,4 +2080,22 @@
     <string name="retro_login_hint">Щоб почати, введіть свій PIN</string>
     <string name="draft_prefix">Чернетка:</string>
     <string name="lang_chinese_trad">Традиційна китайська</string>
+    <string name="report_title_desktop">Повідомити про проблему Desktop</string>
+    <string name="report_hero_title_desktop">Допоможіть покращити SinusChat-Desktop</string>
+    <string name="report_diag_desc_desktop">Версія, комп’ютер, з’єднання з телефоном і налаштування програми для комп’ютера. Без повідомлень і контактів.</string>
+    <string name="report_diag_waiting">Надсилаю діагностичні дані на телефон…</string>
+    <string name="report_diag_pc_failed">Не вдалося отримати діагностичні дані з комп’ютера. Перевірте, чи комп’ютер підключено, або вимкніть додавання даних.</string>
+    <string name="report_platform_desktop">Комп’ютер</string>
+    <string name="report_sending_app">Надсилання звернення: %1$s</string>
+    <string name="updater_github">Ще немає в Google Play? Завантажте з GitHub</string>
+    <string name="terms_update_title">Ми оновили умови</string>
+    <string name="terms_update_desc">Ми змінили умови використання, політику конфіденційності або ліцензію. Щоб і далі користуватися SinusChat, прочитайте нові умови та підтвердьте, що приймаєте їх.</string>
+    <string name="terms_update_date">Діють з %1$s</string>
+    <string name="terms_update_accept">Приймаю</string>
+    <string name="terms_update_decline">Не приймаю</string>
+    <string name="terms_update_declined">Без прийняття нових умов ви не можете користуватися SinusChat. Ви можете повернутися сюди й прийняти їх будь-коли.</string>
+    <string name="terms_update_close">Закрити застосунок</string>
+    <string name="avatar_download">Завантажити</string>
+    <string name="avatar_saved">Фото збережено в папці %1$s</string>
+    <string name="avatar_save_failed">Не вдалося зберегти фото</string>
 </resources>

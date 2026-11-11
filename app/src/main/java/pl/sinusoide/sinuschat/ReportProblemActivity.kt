@@ -65,7 +65,15 @@ class ReportProblemActivity : AppCompatActivity() {
 
     companion object {
         const val EXTRA_FROM_NOTIFICATION = "report_from_notification"
+        const val EXTRA_DESKTOP = "report_desktop"
+        private const val PLATFORM_ANDROID = "SinusChatA"
+        private const val PLATFORM_DESKTOP = "SinusChat-Desktop"
+        private const val APP_NAME_ANDROID = "SinusChat"
+        private const val APP_NAME_DESKTOP = "SinusChat-Desktop"
+        private const val DIAG_WAIT_MS = 20_000L
     }
+
+    private var desktop = false
 
     private fun askToUpdate(latest: pl.sinusoide.sinuschat.util.UpdateChecker.Latest) {
         UpdateActivity.open(this, latest, forReport = true)
@@ -91,6 +99,14 @@ class ReportProblemActivity : AppCompatActivity() {
         cRed = ContextCompat.getColor(this, R.color.sinuschat_error)
         cOrange = 0xFFE67E22.toInt()
         cPurple = 0xFF9B6BE0.toInt()
+        desktop = intent.getBooleanExtra(EXTRA_DESKTOP, false)
+
+        if (desktop) {
+            buildUi()
+            selectTopic("bug")
+            refreshSendState()
+            return
+        }
 
         val updates = pl.sinusoide.sinuschat.util.UpdateChecker
         val fromNotification = intent.getBooleanExtra(EXTRA_FROM_NOTIFICATION, false)
@@ -123,7 +139,7 @@ class ReportProblemActivity : AppCompatActivity() {
 
     private val reportUpdatedReceiver = object : android.content.BroadcastReceiver() {
         override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
-            if (!isFinishing && !isDestroyed) loadMine()
+            if (!isFinishing && !isDestroyed && !desktop) loadMine()
         }
     }
 
@@ -145,7 +161,7 @@ class ReportProblemActivity : AppCompatActivity() {
 
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
-        loadMine()
+        if (!desktop) loadMine()
     }
 
     private fun buildUi() {
@@ -168,7 +184,7 @@ class ReportProblemActivity : AppCompatActivity() {
             setOnClickListener { finish() }
         }, LinearLayout.LayoutParams((44 * dp).toInt(), (44 * dp).toInt()))
         header.addView(TextView(this).apply {
-            text = getString(R.string.report_title); textSize = 20f
+            text = getString(if (desktop) R.string.report_title_desktop else R.string.report_title); textSize = 20f
             setTextColor(cPrimary); typeface = Typeface.DEFAULT_BOLD
             setPadding((8 * dp).toInt(), 0, 0, 0)
         })
@@ -206,7 +222,7 @@ class ReportProblemActivity : AppCompatActivity() {
                 bottomMargin = (12 * dp).toInt()
             })
             addView(TextView(this@ReportProblemActivity).apply {
-                text = getString(R.string.report_hero_title); textSize = 17f
+                text = getString(if (desktop) R.string.report_hero_title_desktop else R.string.report_hero_title); textSize = 17f
                 setTextColor(cPrimary); typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
             })
             addView(TextView(this@ReportProblemActivity).apply {
@@ -333,14 +349,16 @@ class ReportProblemActivity : AppCompatActivity() {
         }
         content.addView(sendButton, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (20 * dp).toInt() })
 
-        content.addView(sectionTitle(getString(R.string.report_section_mine)))
         mineContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        content.addView(mineContainer)
-        content.addView(TextView(this).apply {
-            text = getString(R.string.report_retention_note)
-            textSize = 12.5f; setTextColor(cSecondary); gravity = Gravity.CENTER
-            setPadding((12 * dp).toInt(), (14 * dp).toInt(), (12 * dp).toInt(), 0)
-        })
+        if (!desktop) {
+            content.addView(sectionTitle(getString(R.string.report_section_mine)))
+            content.addView(mineContainer)
+            content.addView(TextView(this).apply {
+                text = getString(R.string.report_retention_note)
+                textSize = 12.5f; setTextColor(cSecondary); gravity = Gravity.CENTER
+                setPadding((12 * dp).toInt(), (14 * dp).toInt(), (12 * dp).toInt(), 0)
+            })
+        }
 
         setContentView(outer)
     }
@@ -473,7 +491,8 @@ class ReportProblemActivity : AppCompatActivity() {
                     text = getString(R.string.report_diag_title); textSize = 15.5f; setTextColor(cPrimary)
                 })
                 addView(TextView(this@ReportProblemActivity).apply {
-                    text = getString(R.string.report_diag_desc); textSize = 12.5f; setTextColor(cSecondary)
+                    text = getString(if (desktop) R.string.report_diag_desc_desktop else R.string.report_diag_desc)
+                    textSize = 12.5f; setTextColor(cSecondary)
                     setPadding(0, (2 * dp).toInt(), 0, 0)
                 })
             }, LinearLayout.LayoutParams(0, -2, 1f).apply { marginEnd = (8 * dp).toInt() })
@@ -502,26 +521,52 @@ class ReportProblemActivity : AppCompatActivity() {
         }
 
         setSending(true)
-        val body = JSONObject().apply {
-            put("topic", topic)
-            put("description", desc)
-            if (email.isNotEmpty()) put("email", email)
-            put("appVersion", try { packageManager.getPackageInfo(packageName, 0).versionName ?: "?" } catch (_: Exception) { "?" })
-            put("device", "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}")
-            put("android", android.os.Build.VERSION.RELEASE)
-            if (diagSwitch.isChecked) put("diagnostics", DiagnosticsSummary.build(this@ReportProblemActivity))
-        }
-
+        val withDiag = diagSwitch.isChecked
+        val sendingText = getString(R.string.report_sending_app, if (desktop) APP_NAME_DESKTOP else APP_NAME_ANDROID)
+        val (waiting, waitingLabel) = showDiagWaiting(if (desktop && withDiag) getString(R.string.report_diag_waiting) else sendingText)
         AppExecutor.io {
+            val pc = if (desktop) {
+                if (withDiag) pl.sinusoide.sinuschat.pclink.PcLinkHub.requestDesktopDiag(DIAG_WAIT_MS)
+                else pl.sinusoide.sinuschat.pclink.PcLinkHub.cachedDesktopDiag()
+                    ?: pl.sinusoide.sinuschat.pclink.PcLinkHub.requestDesktopDiag(5_000L)
+            } else null
+            if (desktop && withDiag && pc == null) {
+                AppExecutor.main {
+                    waiting.dismiss()
+                    if (isFinishing || isDestroyed) return@main
+                    setSending(false)
+                    PopupHelper.showError(this, getString(R.string.report_diag_pc_failed))
+                }
+                return@io
+            }
+            val body = JSONObject().apply {
+                put("topic", topic)
+                put("description", desc)
+                if (email.isNotEmpty()) put("email", email)
+                if (desktop) {
+                    put("platform", PLATFORM_DESKTOP)
+                    put("appVersion", pc?.appVersion?.ifBlank { null } ?: "?")
+                    put("device", listOfNotNull(pc?.device?.ifBlank { null }, pc?.os?.ifBlank { null }).joinToString(" · ").ifEmpty { "?" })
+                    if (withDiag && pc != null) put("diagnostics", pc.text)
+                } else {
+                    put("platform", PLATFORM_ANDROID)
+                    put("appVersion", try { packageManager.getPackageInfo(packageName, 0).versionName ?: "?" } catch (_: Exception) { "?" })
+                    put("device", "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}")
+                    put("android", android.os.Build.VERSION.RELEASE)
+                    if (withDiag) put("diagnostics", DiagnosticsSummary.build(this@ReportProblemActivity))
+                }
+            }
+            AppExecutor.main { waitingLabel.text = sendingText }
             val (code, json) = postWithCode("/api/report", body)
             AppExecutor.main {
+                waiting.dismiss()
                 if (isFinishing || isDestroyed) return@main
                 setSending(false)
                 when {
                     code in 200..299 && json?.optBoolean("ok") == true -> {
                         descInput.setText("")
                         showSentSheet(json.optInt("id"))
-                        loadMine()
+                        if (!desktop) loadMine()
                     }
                     code == 429 -> PopupHelper.showError(this, getString(R.string.report_too_many))
                     code == 400 && json?.optString("code") == "invalid_email" ->
@@ -606,8 +651,9 @@ class ReportProblemActivity : AppCompatActivity() {
                 orientation = LinearLayout.VERTICAL
                 addView(LinearLayout(this@ReportProblemActivity).apply {
                     orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                    val pcLabel = if (r.optString("platform") == PLATFORM_DESKTOP) " · " + getString(R.string.report_platform_desktop) else ""
                     addView(TextView(this@ReportProblemActivity).apply {
-                        text = "#${r.optInt("id")} · $date"; textSize = 12.5f; setTextColor(cSecondary)
+                        text = "#${r.optInt("id")} · $date$pcLabel"; textSize = 12.5f; setTextColor(cSecondary)
                     }, LinearLayout.LayoutParams(0, -2, 1f))
                     addView(TextView(this@ReportProblemActivity).apply {
                         text = getString(statusRes); textSize = 11.5f; typeface = Typeface.DEFAULT_BOLD
@@ -667,8 +713,56 @@ class ReportProblemActivity : AppCompatActivity() {
         }
     }
 
+    private fun showDiagWaiting(label: String = getString(R.string.report_diag_waiting)): Pair<BottomSheetDialog, TextView> {
+        val sheet = BottomSheetDialog(this, R.style.Theme_SinusChat_BottomSheet)
+        sheet.setCancelable(false)
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding((24 * dp).toInt(), (28 * dp).toInt(), (24 * dp).toInt(), (32 * dp).toInt())
+        }
+        val ring = pl.sinusoide.sinuschat.ui.SineProgressRing(this).apply {
+            color = cAccent; disc = 0; showCancel = false; isClickable = false
+            progress = { null }
+        }
+        root.addView(ring, LinearLayout.LayoutParams((64 * dp).toInt(), (64 * dp).toInt()).apply { bottomMargin = (18 * dp).toInt() })
+        val labelView = TextView(this).apply {
+            text = label; textSize = 16f
+            setTextColor(cPrimary); typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+        }
+        root.addView(labelView)
+        sheet.setContentView(root)
+        val tick = object : Runnable {
+            override fun run() {
+                ring.invalidate()
+                if (sheet.isShowing) ring.postOnAnimation(this)
+            }
+        }
+        sheet.setOnShowListener { ring.postOnAnimation(tick) }
+        pl.sinusoide.sinuschat.ui.FlowGlass.show(sheet)
+        return sheet to labelView
+    }
+
     private fun showDiagnosticsPreview() {
-        val summary = DiagnosticsSummary.build(this)
+        if (desktop) {
+            val cached = pl.sinusoide.sinuschat.pclink.PcLinkHub.cachedDesktopDiag()
+            if (cached != null) { showDiagnosticsText(cached.text); return }
+            val waiting = showDiagWaiting().first
+            AppExecutor.io {
+                val pc = pl.sinusoide.sinuschat.pclink.PcLinkHub.requestDesktopDiag(DIAG_WAIT_MS)
+                AppExecutor.main {
+                    waiting.dismiss()
+                    if (isFinishing || isDestroyed) return@main
+                    if (pc == null) PopupHelper.showError(this, getString(R.string.report_diag_pc_failed))
+                    else showDiagnosticsText(pc.text)
+                }
+            }
+            return
+        }
+        showDiagnosticsText(DiagnosticsSummary.build(this))
+    }
+
+    private fun showDiagnosticsText(summary: String) {
         val sheet = BottomSheetDialog(this, R.style.Theme_SinusChat_BottomSheet)
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -683,7 +777,8 @@ class ReportProblemActivity : AppCompatActivity() {
             setTextColor(cPrimary); typeface = Typeface.DEFAULT_BOLD
         })
         root.addView(TextView(this).apply {
-            text = getString(R.string.report_diag_desc); textSize = 13f; setTextColor(cSecondary)
+            text = getString(if (desktop) R.string.report_diag_desc_desktop else R.string.report_diag_desc)
+            textSize = 13f; setTextColor(cSecondary)
             setPadding(0, (4 * dp).toInt(), 0, (14 * dp).toInt())
         })
         root.addView(TextView(this).apply {

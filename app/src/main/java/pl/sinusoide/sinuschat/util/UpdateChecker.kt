@@ -25,13 +25,16 @@ object UpdateChecker {
     private const val KEY_SNOOZE_UNTIL = "snooze_until"
     private const val KEY_LATEST_CODE = "latest_code"
     private const val KEY_LATEST_NAME = "latest_name"
+    private const val KEY_LATEST_PAGE = "latest_page"
     private const val LEGACY_CHANNEL = "sinuschat_updates"
     private const val LEGACY_NOTIF_ID = 9300
     private const val CHECK_EVERY_MS = 24 * 3_600_000L
     private const val RETRY_MS = 3_600_000L
     private const val SNOOZE_MS = 3 * 24 * 3_600_000L
 
-    class Latest(val code: Long, val name: String)
+    const val RELEASES_URL = "https://github.com/sinusoidetechnology/SinusChat/releases/latest"
+
+    class Latest(val code: Long, val name: String, val page: String? = null)
 
     @Volatile private var checking = false
     @Volatile private var pending: Latest? = null
@@ -53,7 +56,7 @@ object UpdateChecker {
         val p = prefs(ctx)
         val code = p.getLong(KEY_LATEST_CODE, 0L)
         val name = p.getString(KEY_LATEST_NAME, null)
-        return if (code > 0L && !name.isNullOrBlank()) Latest(code, name) else null
+        return if (code > 0L && !name.isNullOrBlank()) Latest(code, name, p.getString(KEY_LATEST_PAGE, null)) else null
     }
 
     fun fetchLatest(ctx: Context): Latest? {
@@ -69,8 +72,10 @@ object UpdateChecker {
                 val json = JSONObject(body)
                 val code = json.optLong("versionCode", 0L)
                 val name = json.optString("versionName").trim().take(32)
-                if (code <= 0L || name.isEmpty()) null else Latest(code, name).also {
-                    prefs(ctx).edit().putLong(KEY_LATEST_CODE, code).putString(KEY_LATEST_NAME, name).apply()
+                val page = json.optString("releaseUrl").trim().takeIf { it.startsWith("https://github.com/sinusoidetechnology/") && it.length < 300 }
+                if (code <= 0L || name.isEmpty()) null else Latest(code, name, page).also {
+                    prefs(ctx).edit().putLong(KEY_LATEST_CODE, code).putString(KEY_LATEST_NAME, name)
+                        .putString(KEY_LATEST_PAGE, page).apply()
                 }
             }
         } catch (e: Exception) {

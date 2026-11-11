@@ -44,6 +44,7 @@ object AvatarHelper {
     fun setMyColor(context: Context, color: String) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putString("my_color", color).apply()
+        pl.sinusoide.sinuschat.pclink.PcLinkHub.onProfileChanged()
     }
 
     fun colorForHash(hash: String): String =

@@ -180,6 +180,10 @@
     <string name="view_once_already_opened">此檔案已被開啟並刪除</string>
     <string name="view_once_not_in_groups">單次檢視檔案僅適用於私人聊天</string>
     <string name="view_once_media_only">只有相片和影片可以作為單次檢視傳送</string>
+    <string name="original_quality">原始畫質</string>
+    <string name="original_quality_on">原始畫質：不壓縮，以完整解析度傳送</string>
+    <string name="original_quality_off">標準畫質：檔案較小，傳送較快</string>
+    <string name="transfer_speed_eta">%1$s/s · 剩餘 %2$s</string>
     <string name="error_connection">連線錯誤</string>
     <string name="error_sending">傳送時發生錯誤</string>
     <string name="error_rename">重新命名時發生錯誤</string>
@@ -205,6 +209,8 @@
     <string name="notif_bg_listening">正在接收訊息</string>
     <string name="notif_bg_offline">離線模式</string>
     <string name="notif_bg_checking">正在檢查新訊息</string>
+    <string name="bg_data_off_title">背景數據已關閉</string>
+    <string name="bg_data_off_text">開啟 SinusChat 後才會收到訊息。輕觸以允許背景數據。</string>
     <string name="notif_added_to_group_format">已被加入群組：%s</string>
     <string name="account">帳號</string>
     <string name="account_sub">帳號管理</string>
@@ -342,6 +348,7 @@
     <string name="session_moved_title">工作階段已轉移</string>
     <string name="session_moved_desc">你的帳號已在新裝置上啟用。此裝置已安全登出，你的資料完好無損。</string>
     <string name="session_moved_hint">如果登入的不是你，請變更你的電子郵件密碼。</string>
+    <string name="session_moved_check_failed">無法檢查工作階段。請檢查網路連線後再試一次。</string>
     <string name="session_moved_cd">工作階段已轉移到其他裝置</string>
     <string name="app_theme_title">應用程式主題</string>
     <string name="themes_title">主題</string>
@@ -437,6 +444,10 @@
     <string name="disappearing_trigger_received">從接收時起算</string>
     <string name="last_seen_prefix">最後上線</string>
     <string name="just_now">剛剛</string>
+    <string name="last_seen_short">%1$s上線</string>
+    <string name="ago_min_short">%1$d 分鐘前</string>
+    <string name="ago_hour_short">%1$d 小時前</string>
+    <string name="ago_month_short">%1$d 個月前</string>
     <string name="peer_screenshot_attempt">對方嘗試擷取螢幕畫面</string>
     <plurals name="files_plural">
         <item quantity="other">個檔案</item>
@@ -862,6 +873,11 @@
     <string name="call_remote_video_on">%1$s 開啟了相機</string>
     <string name="call_turn_on_my_camera">開啟我的相機</string>
     <string name="call_camera_permission">沒有相機權限</string>
+    <string name="call_route_phone">手機</string>
+    <string name="call_route_speaker">擴音</string>
+    <string name="call_route_bluetooth">藍牙</string>
+    <string name="call_camera_failed">無法開啟相機</string>
+    <string name="peer_screenshot_attempt_call">對方在通話中嘗試擷取螢幕畫面</string>
     <string name="call_video_busy">請稍候再試</string>
     <string name="lock_pin_placeholder">輸入 PIN 碼</string>
     <string name="lock_show_dots">顯示 PIN 碼圓點</string>
@@ -1986,4 +2002,22 @@
     <string name="retro_login_hint">請輸入 PIN 碼以開始</string>
     <string name="draft_prefix">草稿：</string>
     <string name="lang_chinese_trad">繁體中文</string>
+    <string name="report_title_desktop">回報問題 Desktop</string>
+    <string name="report_hero_title_desktop">協助改善 SinusChat-Desktop</string>
+    <string name="report_diag_desc_desktop">版本、電腦、與手機的連線以及電腦版應用程式的設定。不含訊息和聯絡人。</string>
+    <string name="report_diag_waiting">正在將診斷資料傳送到手機…</string>
+    <string name="report_diag_pc_failed">無法從電腦取得診斷資料。請確認電腦已連線，或關閉附上診斷資料。</string>
+    <string name="report_platform_desktop">電腦</string>
+    <string name="report_sending_app">正在傳送回報：%1$s</string>
+    <string name="updater_github">Google Play 上還沒有？從 GitHub 下載</string>
+    <string name="terms_update_title">我們更新了條款</string>
+    <string name="terms_update_desc">我們變更了服務條款、隱私權政策或授權條款。若要繼續使用 SinusChat，請閱讀新條款並確認你接受。</string>
+    <string name="terms_update_date">自 %1$s 起生效</string>
+    <string name="terms_update_accept">我接受</string>
+    <string name="terms_update_decline">我不接受</string>
+    <string name="terms_update_declined">不接受新條款就無法使用 SinusChat。你可以隨時回到這裡接受條款。</string>
+    <string name="terms_update_close">關閉應用程式</string>
+    <string name="avatar_download">下載</string>
+    <string name="avatar_saved">相片已儲存到 %1$s</string>
+    <string name="avatar_save_failed">無法儲存相片</string>
 </resources>

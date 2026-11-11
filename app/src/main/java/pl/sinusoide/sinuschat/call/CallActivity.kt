@@ -52,6 +52,15 @@ class CallActivity : AppCompatActivity() {
         private const val RING_TIMEOUT_MS = 30_000L
 
         @Volatile var activeConversationId: String? = null
+        private var current: java.lang.ref.WeakReference<CallActivity>? = null
+
+        fun peerScreenshot(conversationId: String) {
+            AppExecutor.main {
+                val a = current?.get() ?: return@main
+                if (a.isFinishing || a.isDestroyed || a.conversationId != conversationId) return@main
+                PopupHelper.showError(a, a.getString(R.string.peer_screenshot_attempt_call))
+            }
+        }
 
         fun startAsCaller(ctx: Context, conversationId: String, otherHash: String, otherName: String, isVideo: Boolean) {
             ctx.startActivity(Intent(ctx, CallActivity::class.java).apply {
@@ -117,10 +126,18 @@ class CallActivity : AppCompatActivity() {
     private var inPip = false
     @Volatile private var lastRemoteFrameMs = 0L
     @Volatile private var remoteStalled = false
+    @Volatile private var remoteCamOff = false
+    private var started = false
 
-    private val remoteWatch = VideoSink {
+    @Volatile private var remoteBlack = false
+    private var remoteFrames = 0
+
+    private val remoteWatch = VideoSink { frame ->
+        if (remoteSharing) remoteBlack = false
+        else if (remoteFrames++ % 10 == 0) remoteBlack = BlackFrames.isBlack(frame)
+        if (remoteBlack) return@VideoSink
         lastRemoteFrameMs = android.os.SystemClock.elapsedRealtime()
-        if (remoteStalled) {
+        if (remoteStalled && !remoteCamOff) {
             remoteStalled = false
             mainHandler.post { if (!isDestroyed && !remoteVideoShown && remoteTrack != null) onRemoteVideoStarted() }
         }
@@ -131,6 +148,7 @@ class CallActivity : AppCompatActivity() {
             val last = lastRemoteFrameMs
             if (remoteVideoShown && !remoteStalled && last > 0 &&
                 android.os.SystemClock.elapsedRealtime() - last > 2500) onRemoteVideoStalled()
+            if (started && rtcManager?.ensureCamera() == true) routeVideo()
             mainHandler.postDelayed(this, 1000)
         }
     }
@@ -138,6 +156,25 @@ class CallActivity : AppCompatActivity() {
     private fun onRemoteVideoStalled() {
         remoteStalled = true
         remoteSharing = false
+        remoteVideoShown = false
+        hideRemoteVideoBanner()
+        unswapNow()
+        bigVideo.clearImage()
+        routeVideo()
+        applyMode(animate = true)
+    }
+
+    private fun onRemoteCamera(on: Boolean) {
+        remoteCamOff = !on
+        if (on) {
+            val fresh = android.os.SystemClock.elapsedRealtime() - lastRemoteFrameMs < 1000
+            if (!remoteVideoShown && remoteTrack != null && fresh) { remoteStalled = false; onRemoteVideoStarted() }
+            else if (!remoteVideoShown) remoteStalled = true
+            else if (!isVideo) showRemoteVideoBanner()
+            return
+        }
+        remoteStalled = true
+        if (!remoteVideoShown) return
         remoteVideoShown = false
         hideRemoteVideoBanner()
         unswapNow()
@@ -189,9 +226,13 @@ class CallActivity : AppCompatActivity() {
         isVideo        = intent.getBooleanExtra("isVideo", false)
         isCaller       = intent.getBooleanExtra("isCaller", true)
         offerSDP       = intent.getStringExtra("offerSDP") ?: ""
+        pl.sinusoide.sinuschat.pclink.PcLinkCalls.onRingStopped(conversationId, pl.sinusoide.sinuschat.link.LinkFrame.CALL_ON_PHONE)
         activeConversationId = conversationId
+        current = java.lang.ref.WeakReference(this)
 
         buildUI()
+        applyCaptureGuard(pl.sinusoide.sinuschat.util.CaptureGuard.peerBlocks(this, otherUserHash))
+        refreshPeerPrivacy()
         checkPermissionsAndStart()
         WebSocketManager.onCallEvent = { msg -> AppExecutor.main { handleSignal(msg) } }
         onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
@@ -206,6 +247,8 @@ class CallActivity : AppCompatActivity() {
         if (resumeOnly) return
         OngoingCallService.stop(this)
         if (activeConversationId == conversationId) activeConversationId = null
+        if (current?.get() === this) current = null
+        unregisterCaptureCallback()
         stopOutgoingRingtone()
         endAudioSession()
         mainHandler.removeCallbacksAndMessages(null)
@@ -298,9 +341,8 @@ class CallActivity : AppCompatActivity() {
         WalkieTalkie.session?.stop()
         OngoingCallService.onHangUp = { endCall() }
         OngoingCallService.onToggleMic = { if (!isDestroyed) toggleMic() }
-        OngoingCallService.onToggleSpeaker = { if (!isDestroyed) setSpeaker(!speakerOn) }
+        OngoingCallService.onToggleSpeaker = { if (!isDestroyed) audio.toggleSpeaker() }
         OngoingCallService.start(this, otherUserName, isVideo)
-        if (isVideo) setSpeaker(true)
         beginAudioSession()
         tvStatus.text = if (isCaller) getString(R.string.calling) else getString(R.string.connecting_server)
         if (!hasNetwork()) { failNoNetwork(); return }
@@ -367,9 +409,9 @@ class CallActivity : AppCompatActivity() {
                                 AppExecutor.main {
                                     if (!isFinishing && !isDestroyed) {
                                         remoteTrack = track
+                                        remoteStalled = true
                                         track.addSink(remoteWatch)
                                         routeVideo()
-                                        onRemoteVideoStarted()
                                     }
                                 }
                             },
@@ -489,7 +531,7 @@ class CallActivity : AppCompatActivity() {
         btnCam.active = true
         pipFrame.isClickable = false
         pipFrame.animate().alpha(0f).setDuration(200).start()
-        if (!speakerOn) setSpeaker(true)
+        audio.preferSpeaker()
         hideRemoteVideoBanner()
         applyMode(animate = true)
         OngoingCallService.update(this, true, connectedAtMs)
@@ -520,19 +562,17 @@ class CallActivity : AppCompatActivity() {
     private fun onRemoteScreen(on: Boolean, camera: Boolean) {
         val changed = remoteSharing != on
         remoteSharing = on
-        if (on) unswapNow()
-        routeVideo()
         if (on) {
+            remoteCamOff = false
+            unswapNow()
+            routeVideo()
             hideRemoteVideoBanner()
             if (changed) PopupHelper.show(this, getString(R.string.call_screen_remote, otherUserName))
-        } else if (camera) {
-            if (!remoteVideoShown && remoteTrack != null) onRemoteVideoStarted()
-            else if (!isVideo) showRemoteVideoBanner()
-        } else if (remoteVideoShown) {
-            remoteVideoShown = false
-            unswapNow()
-            applyMode(animate = true)
+            if (!remoteVideoShown) remoteStalled = true
+            return
         }
+        routeVideo()
+        onRemoteCamera(camera)
     }
 
     private fun canSwap() = isVideo && remoteVideoShown && cameraOn && renderersReady
@@ -577,7 +617,13 @@ class CallActivity : AppCompatActivity() {
         }
         initRenderers()
         val needsRenegotiation = rtc.enableVideo()
+        if (!rtc.isCameraEnabled) { PopupHelper.showError(this, getString(R.string.call_camera_failed)); return }
         cameraOn = true
+        frontCamera = rtc.frontFacing
+        btnCam.setIcon(R.drawable.ic_call_video_on)
+        btnCam.active = false
+        pipFrame.isClickable = true
+        pipFrame.animate().alpha(1f).setDuration(200).start()
         isVideo = true
         OngoingCallService.update(this, true, connectedAtMs)
         routeVideo()
@@ -591,7 +637,7 @@ class CallActivity : AppCompatActivity() {
         } else {
             sendSignal("call_screen", JSONObject().put("on", false).put("camera", true))
         }
-        setSpeaker(true)
+        audio.preferSpeaker()
         hideRemoteVideoBanner()
         applyMode(animate = true)
     }
@@ -791,6 +837,7 @@ class CallActivity : AppCompatActivity() {
             "call_reoffer" -> {
                 val sdp = msg.optString("sdpDescription")
                 if (msg.optBoolean("screen")) onRemoteScreen(true, false)
+                else if (msg.optBoolean("isVideo")) onRemoteCamera(true)
                 if (sdp.isNotEmpty()) {
                     rtcManager?.answerRenegotiation(SessionDescription(SessionDescription.Type.OFFER, sdp)) { answer ->
                         sendSignal("call_reanswer", JSONObject()
@@ -954,7 +1001,9 @@ class CallActivity : AppCompatActivity() {
     private lateinit var btnSpk: CallButtonView
     private lateinit var flipColumn: View
     private var remoteBanner: View? = null
-    private var speakerOn = false
+    private lateinit var spkLabel: TextView
+    private lateinit var routeBar: AudioRouteBar
+    private val audio by lazy { CallAudio(this) { onAudioChanged() } }
     private var micOn = true
     private var audioSession = false
     private var savedAudioMode = android.media.AudioManager.MODE_NORMAL
@@ -982,7 +1031,8 @@ class CallActivity : AppCompatActivity() {
         root.addView(videoContainer, FrameLayout.LayoutParams(-1, -1))
         bigVideo = TextureVideoRenderer(this, "big")
         videoContainer.addView(bigVideo, FrameLayout.LayoutParams(-1, -1))
-        videoContainer.setOnClickListener { setUiHidden(!uiHidden) }
+        videoContainer.setOnClickListener { if (routeBar.open) hideRouteBar() else setUiHidden(!uiHidden) }
+        root.setOnClickListener { hideRouteBar() }
         swapFlash = View(this).apply { setBackgroundColor(Color.BLACK); alpha = 0f }
         videoContainer.addView(swapFlash, FrameLayout.LayoutParams(-1, -1))
 
@@ -1078,6 +1128,7 @@ class CallActivity : AppCompatActivity() {
         root.addView(avatar, FrameLayout.LayoutParams(avatarSize, avatarSize, Gravity.CENTER).apply {
             bottomMargin = (70 * dp).toInt()
         })
+        pipFrame.bringToFront()
 
         controls = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -1104,13 +1155,18 @@ class CallActivity : AppCompatActivity() {
             val rtc = rtcManager ?: return@setOnClickListener
             if (screenSharing) { stopScreenShare(toCamera = true); return@setOnClickListener }
             if (!isVideo) { requestVideoUpgrade(); return@setOnClickListener }
+            val wanted = !rtc.isCameraEnabled
             val on = rtc.toggleCamera()
+            if (wanted && !on) PopupHelper.showError(this, getString(R.string.call_camera_failed))
             cameraOn = on
+            if (on) frontCamera = rtc.frontFacing
+            routeVideo()
             btnCam.setIcon(if (on) R.drawable.ic_call_video_on else R.drawable.ic_call_video_off)
             btnCam.active = !on
             if (!on) unswapNow()
             pipFrame.isClickable = on
             pipFrame.animate().alpha(if (on) 1f else 0f).setDuration(200).start()
+            if (wasConnected) sendSignal("call_screen", JSONObject().put("on", false).put("camera", on))
         }
         panel.addView(buttonColumn(btnCam, getString(R.string.call_btn_camera)), LinearLayout.LayoutParams(0, -2, 1f))
 
@@ -1133,9 +1189,20 @@ class CallActivity : AppCompatActivity() {
         flipColumn = buttonColumn(btnFlip, getString(R.string.call_btn_flip))
         panel.addView(flipColumn, LinearLayout.LayoutParams(0, -2, 1f))
 
-        btnSpk = CallButtonView(this, R.drawable.ic_call_speaker_off, palette = themePalette)
-        btnSpk.setOnClickListener { setSpeaker(!speakerOn) }
-        panel.addView(buttonColumn(btnSpk, getString(R.string.call_btn_speaker)), LinearLayout.LayoutParams(0, -2, 1f))
+        btnSpk = CallButtonView(this, CallAudio.icon(if (isVideo) CallAudio.Route.SPEAKER else CallAudio.Route.PHONE), palette = themePalette)
+        btnSpk.setOnClickListener { onSpeakerTap() }
+        val spkColumn = buttonColumn(btnSpk, getString(R.string.call_btn_speaker)) as LinearLayout
+        spkLabel = spkColumn.getChildAt(1) as TextView
+        panel.addView(spkColumn, LinearLayout.LayoutParams(0, -2, 1f))
+
+        routeBar = AudioRouteBar(this, themePalette) { r ->
+            audio.select(r)
+            hideRouteBar()
+        }
+        controls.addView(routeBar, LinearLayout.LayoutParams(-1, -2).apply {
+            marginStart = (16 * dp).toInt(); marginEnd = (16 * dp).toInt()
+            bottomMargin = (10 * dp).toInt()
+        })
 
         controls.addView(panel, LinearLayout.LayoutParams(-1, -2).apply {
             marginStart = (16 * dp).toInt(); marginEnd = (16 * dp).toInt()
@@ -1237,7 +1304,7 @@ class CallActivity : AppCompatActivity() {
         micOn = manager.toggleMic()
         btnMic.setIcon(if (micOn) R.drawable.ic_mic else R.drawable.ic_mic_off)
         btnMic.active = !micOn
-        OngoingCallService.setAudio(this, micOn, speakerOn)
+        OngoingCallService.setAudio(this, micOn, audio.speakerOn)
         if (inPip) updatePip()
     }
 
@@ -1255,15 +1322,15 @@ class CallActivity : AppCompatActivity() {
         audioFocus = focus
         am.mode = android.media.AudioManager.MODE_IN_COMMUNICATION
         audioSession = true
-        routeSpeaker(am, speakerOn)
+        audio.start(isVideo)
     }
 
     private fun endAudioSession() {
         if (!audioSession) return
         audioSession = false
+        audio.stop()
         val am = getSystemService(android.media.AudioManager::class.java) ?: return
         try {
-            routeSpeaker(am, false)
             am.mode = if (savedAudioMode == android.media.AudioManager.MODE_IN_COMMUNICATION)
                 android.media.AudioManager.MODE_NORMAL else savedAudioMode
             audioFocus?.let { am.abandonAudioFocusRequest(it) }
@@ -1271,24 +1338,71 @@ class CallActivity : AppCompatActivity() {
         audioFocus = null
     }
 
-    private fun routeSpeaker(am: android.media.AudioManager, on: Boolean) {
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-            if (on) am.availableCommunicationDevices
-                .firstOrNull { it.type == android.media.AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
-                ?.let { am.setCommunicationDevice(it) }
-            else am.clearCommunicationDevice()
-        } else {
-            @Suppress("DEPRECATION")
-            am.isSpeakerphoneOn = on
+    private fun onSpeakerTap() {
+        if (!audio.hasBluetooth) { audio.toggleSpeaker(); return }
+        if (routeBar.open) hideRouteBar()
+        else {
+            routeBar.bind(audio)
+            routeBar.show()
+            btnSpk.arrowOpen = true
         }
     }
 
-    private fun setSpeaker(on: Boolean) {
-        speakerOn = on
-        getSystemService(android.media.AudioManager::class.java)?.let { routeSpeaker(it, on) }
-        btnSpk.setIcon(if (on) R.drawable.ic_call_speaker_on else R.drawable.ic_call_speaker_off)
-        btnSpk.active = on
-        OngoingCallService.setAudio(this, micOn, on)
+    private fun hideRouteBar() {
+        routeBar.hide()
+        btnSpk.arrowOpen = false
+    }
+
+    private fun onAudioChanged() {
+        if (isDestroyed || !::btnSpk.isInitialized) return
+        btnSpk.setIcon(CallAudio.icon(audio.route))
+        btnSpk.active = audio.route == CallAudio.Route.SPEAKER
+        btnSpk.arrow = audio.hasBluetooth
+        spkLabel.text = if (audio.hasBluetooth) audio.label(this) else getString(R.string.call_btn_speaker)
+        btnSpk.contentDescription = spkLabel.text
+        routeBar.bind(audio)
+        if (!audio.hasBluetooth) hideRouteBar()
+        OngoingCallService.setAudio(this, micOn, audio.speakerOn)
+    }
+
+    private var captureCallbackOn = false
+    private val captureCallback by lazy { android.app.Activity.ScreenCaptureCallback { notifyCaptureAttempt() } }
+
+    private fun applyCaptureGuard(peerBlocks: Boolean) {
+        if (isDestroyed) return
+        if (peerBlocks || PrivacySettings.isCaptureBlockEnabled(this)) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        else window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return
+        if (peerBlocks && !captureCallbackOn) {
+            try {
+                registerScreenCaptureCallback(mainExecutor, captureCallback)
+                captureCallbackOn = true
+            } catch (e: SecurityException) {
+                android.util.Log.w("CallActivity", "ScreenCapture unavailable: ${e.message}")
+            }
+        } else if (!peerBlocks) unregisterCaptureCallback()
+    }
+
+    private fun unregisterCaptureCallback() {
+        if (!captureCallbackOn || android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return
+        captureCallbackOn = false
+        try { unregisterScreenCaptureCallback(captureCallback) } catch (_: Exception) {}
+    }
+
+    private fun refreshPeerPrivacy() {
+        if (otherUserHash.isEmpty()) return
+        val ctx = applicationContext
+        AppExecutor.io {
+            val user = try { ApiClient.getObject("/api/user/$otherUserHash", ctx) } catch (_: Exception) { null } ?: return@io
+            val on = user.optBoolean("chat_privacy_mode", false)
+            pl.sinusoide.sinuschat.util.CaptureGuard.savePeerBlocks(ctx, otherUserHash, on)
+            AppExecutor.main { applyCaptureGuard(on) }
+        }
+    }
+
+    private fun notifyCaptureAttempt() {
+        val me = pl.sinusoide.sinuschat.setup.SetupActivity.getUserPhoneHash(this)
+        pl.sinusoide.sinuschat.util.CaptureGuard.notifyAttempt(this, conversationId, me, otherUserHash, duringCall = true)
     }
 
     private fun applyMode(animate: Boolean) {
@@ -1348,10 +1462,22 @@ class CallActivity : AppCompatActivity() {
         if (!resumeOnly) updatePip()
     }
 
+    override fun onStart() {
+        super.onStart()
+        started = true
+        if (!resumeOnly && rtcManager?.ensureCamera() == true) routeVideo()
+    }
+
+    override fun onStop() {
+        started = false
+        super.onStop()
+    }
+
     override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: android.content.res.Configuration) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
         inPip = isInPictureInPictureMode
         if (inPip) {
+            hideRouteBar()
             if (swapped) unswapNow()
             if (uiHidden) setUiHidden(false)
             hideChromeForPip()
@@ -1364,7 +1490,7 @@ class CallActivity : AppCompatActivity() {
     }
 
     private fun applyModeViews(animate: Boolean) {
-        val showVideo = isVideo || remoteVideoShown
+        val showVideo = remoteVideoShown
         if (!showVideo && uiHidden) setUiHidden(false)
         videoContainer.visibility = if (showVideo) View.VISIBLE else View.GONE
         val pipOn = isVideo && !screenSharing
@@ -1386,17 +1512,24 @@ class CallActivity : AppCompatActivity() {
 
         val avatar = avatarView ?: return
         if (showVideo) {
+            if (avatar.visibility != View.VISIBLE) return
+            avatar.animate().cancel()
             if (animate) avatar.animate().alpha(0f).scaleX(0.8f).scaleY(0.8f).setDuration(250)
                 .withEndAction { avatar.visibility = View.GONE }.start()
             else avatar.visibility = View.GONE
-        } else {
+        } else if (avatar.visibility != View.VISIBLE || avatar.alpha < 1f) {
+            avatar.animate().cancel()
             avatar.visibility = View.VISIBLE
+            if (animate) avatar.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(300)
+                .setInterpolator(DecelerateInterpolator()).start()
+            else { avatar.alpha = 1f; avatar.scaleX = 1f; avatar.scaleY = 1f }
         }
     }
 
     private fun applyChrome(overVideo: Boolean) {
         val pal = if (overVideo) videoPalette else themePalette
         glassButtons.forEach { it.palette = pal }
+        routeBar.palette = pal
         tvName.setTextColor(pal.text)
         if (pal.dark) tvName.setShadowLayer(8f, 0f, 2f, 0x66000000) else tvName.setShadowLayer(0f, 0f, 0f, 0)
         tvStatus.setTextColor(if (pal.flow) 0xE6FFFFFF.toInt() else pal.textSecondary)

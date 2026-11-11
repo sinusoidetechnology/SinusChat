@@ -66,16 +66,33 @@ object SealedSender {
         }
     } catch (_: Exception) { null }
 
+    class GroupSend(val sent: Boolean, val noAccess: Boolean, val createdAt: Long)
+
+    fun postToGroupMember(ctx: Context, groupId: String, to: String, messageId: String, kind: String, payloadB64: String): GroupSend {
+        val body = JSONObject()
+            .put("conversationId", groupId)
+            .put("messageId", messageId)
+            .put("kind", kind)
+            .put("recipientHash", to)
+            .put("payloadB64", payloadB64)
+        return when (val o = trySealed(ctx, body, allowGroup = true)) {
+            is Outcome.Sent -> GroupSend(true, false, o.json.optLong("createdAt", 0L))
+            Outcome.NoAccess, Outcome.Limited -> GroupSend(false, true, 0L)
+            Outcome.Failed -> GroupSend(false, false, 0L)
+        }
+    }
+
     private sealed class Outcome {
         class Sent(val json: JSONObject) : Outcome()
         object NoAccess : Outcome()
+        object Limited : Outcome()
         object Failed : Outcome()
     }
 
     fun post(ctx: Context, body: JSONObject): JSONObject? {
         when (val o = trySealed(ctx, body)) {
             is Outcome.Sent -> return o.json
-            Outcome.Failed -> return null
+            Outcome.Failed, Outcome.Limited -> return null
             Outcome.NoAccess -> {}
         }
         return ApiClient.post("/api/message", body, ctx)
@@ -98,10 +115,10 @@ object SealedSender {
         to.isNotEmpty() && ProfileCrypto.contactKey(ctx, to) != null && PeerKeyCache.getKey(ctx, to) != null &&
             System.currentTimeMillis() >= refusedUntil(ctx, to)
 
-    private fun trySealed(ctx: Context, body: JSONObject, ephemeral: Boolean = false): Outcome {
+    private fun trySealed(ctx: Context, body: JSONObject, ephemeral: Boolean = false, allowGroup: Boolean = false): Outcome {
         val conv = body.optString("conversationId")
         val to = body.optString("recipientHash")
-        if (conv.isEmpty() || conv.startsWith("g_") || conv.startsWith("group:")) return Outcome.NoAccess
+        if (conv.isEmpty() || (!allowGroup && (conv.startsWith("g_") || conv.startsWith("group:")))) return Outcome.NoAccess
         if (!canSeal(ctx, to)) return Outcome.NoAccess
         val profileKey = ProfileCrypto.contactKey(ctx, to) ?: return Outcome.NoAccess
         val theirId = PeerKeyCache.getKey(ctx, to) ?: return Outcome.NoAccess
@@ -145,7 +162,8 @@ object SealedSender {
                         } catch (_: Exception) {}
                         Outcome.NoAccess
                     }
-                    resp.code in 400..499 && resp.code != 429 -> Outcome.NoAccess
+                    resp.code == 429 -> Outcome.Limited
+                    resp.code in 400..499 -> Outcome.NoAccess
                     else -> Outcome.Failed
                 }
             }

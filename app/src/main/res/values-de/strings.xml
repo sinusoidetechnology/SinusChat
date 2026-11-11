@@ -181,6 +181,10 @@
     <string name="view_once_already_opened">Diese Datei wurde bereits geöffnet und gelöscht</string>
     <string name="view_once_not_in_groups">Dateien zur Einmalansicht funktionieren nur in privaten Chats</string>
     <string name="view_once_media_only">Zur Einmalansicht kannst du nur Fotos und Videos senden</string>
+    <string name="original_quality">Originalqualität</string>
+    <string name="original_quality_on">Originalqualität: wird unkomprimiert in voller Auflösung gesendet</string>
+    <string name="original_quality_off">Standardqualität: kleinere Datei, schnelleres Senden</string>
+    <string name="transfer_speed_eta">%1$s/s · noch %2$s</string>
     <string name="error_connection">Verbindungsfehler</string>
     <string name="error_sending">Fehler beim Senden</string>
     <string name="error_rename">Fehler beim Umbenennen</string>
@@ -206,6 +210,8 @@
     <string name="notif_bg_listening">Warte auf Nachrichten</string>
     <string name="notif_bg_offline">Offline-Modus</string>
     <string name="notif_bg_checking">Suche nach neuen Nachrichten</string>
+    <string name="bg_data_off_title">Hintergrunddaten sind aus</string>
+    <string name="bg_data_off_text">Nachrichten kommen erst an, wenn du SinusChat öffnest. Tippe, um Hintergrunddaten zu erlauben.</string>
     <string name="notif_added_to_group_format">Zur Gruppe hinzugefügt: %s</string>
     <string name="account">Konto</string>
     <string name="account_sub">Kontoverwaltung</string>
@@ -344,6 +350,7 @@
     <string name="session_moved_title">Sitzung verschoben</string>
     <string name="session_moved_desc">Dein Konto ist jetzt auf einem neuen Gerät aktiv. Dieses Gerät wurde sicher abgemeldet – deine Daten sind vollständig.</string>
     <string name="session_moved_hint">Wenn nicht du dich angemeldet hast, ändere das Passwort deines E-Mail-Postfachs.</string>
+    <string name="session_moved_check_failed">Die Sitzung konnte nicht geprüft werden. Prüfe deine Internetverbindung und versuche es erneut.</string>
     <string name="session_moved_cd">Sitzung auf ein anderes Gerät verschoben</string>
     <string name="app_theme_title">APP-DESIGN</string>
     <string name="themes_title">Designs</string>
@@ -439,6 +446,10 @@
     <string name="disappearing_trigger_received">Ab dem Empfang</string>
     <string name="last_seen_prefix">Zuletzt online </string>
     <string name="just_now">gerade eben</string>
+    <string name="last_seen_short">Online %1$s</string>
+    <string name="ago_min_short">vor %1$d Min.</string>
+    <string name="ago_hour_short">vor %1$d Std.</string>
+    <string name="ago_month_short">vor %1$d Mon.</string>
     <string name="peer_screenshot_attempt">Dein Gegenüber hat versucht, einen Screenshot zu machen</string>
     <plurals name="files_plural">
         <item quantity="one">Datei</item>
@@ -873,6 +884,11 @@
     <string name="call_remote_video_on">%1$s hat die Kamera eingeschaltet</string>
     <string name="call_turn_on_my_camera">Meine einschalten</string>
     <string name="call_camera_permission">Kein Zugriff auf die Kamera</string>
+    <string name="call_route_phone">Telefon</string>
+    <string name="call_route_speaker">Lautsprecher</string>
+    <string name="call_route_bluetooth">Bluetooth</string>
+    <string name="call_camera_failed">Kamera konnte nicht eingeschaltet werden</string>
+    <string name="peer_screenshot_attempt_call">Dein Gegenüber hat während des Anrufs versucht, einen Screenshot zu machen</string>
     <string name="call_video_busy">Warte einen Moment und versuche es erneut</string>
     <string name="lock_pin_placeholder">PIN eingeben</string>
     <string name="lock_show_dots">PIN-Punkte anzeigen</string>
@@ -2012,4 +2028,22 @@
     <string name="retro_login_hint">Geben Sie zum Starten Ihre PIN ein</string>
     <string name="draft_prefix">Entwurf:</string>
     <string name="lang_chinese_trad">Traditionelles Chinesisch</string>
+    <string name="report_title_desktop">Problem melden Desktop</string>
+    <string name="report_hero_title_desktop">Hilf mit, SinusChat-Desktop zu verbessern</string>
+    <string name="report_diag_desc_desktop">Version, Computer, Verbindung zum Handy und Einstellungen der Computer-App. Ohne Nachrichten und Kontakte.</string>
+    <string name="report_diag_waiting">Diagnosedaten werden ans Handy gesendet…</string>
+    <string name="report_diag_pc_failed">Die Diagnosedaten konnten nicht vom Computer abgerufen werden. Prüfe, ob der Computer verbunden ist, oder schalte das Anhängen der Daten aus.</string>
+    <string name="report_platform_desktop">Computer</string>
+    <string name="report_sending_app">Meldung wird gesendet: %1$s</string>
+    <string name="updater_github">Noch nicht bei Google Play? Von GitHub herunterladen</string>
+    <string name="terms_update_title">Wir haben unsere Bedingungen aktualisiert</string>
+    <string name="terms_update_desc">Wir haben die Nutzungsbedingungen, die Datenschutzerklärung oder die Lizenz geändert. Um SinusChat weiter zu nutzen, lies die neuen Bedingungen und bestätige, dass du sie akzeptierst.</string>
+    <string name="terms_update_date">Gültig ab %1$s</string>
+    <string name="terms_update_accept">Ich akzeptiere</string>
+    <string name="terms_update_decline">Ich akzeptiere nicht</string>
+    <string name="terms_update_declined">Ohne Zustimmung zu den neuen Bedingungen kannst du SinusChat nicht nutzen. Du kannst jederzeit hierher zurückkehren und sie akzeptieren.</string>
+    <string name="terms_update_close">App schließen</string>
+    <string name="avatar_download">Herunterladen</string>
+    <string name="avatar_saved">Foto in %1$s gespeichert</string>
+    <string name="avatar_save_failed">Foto konnte nicht gespeichert werden</string>
 </resources>

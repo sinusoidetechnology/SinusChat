@@ -2,7 +2,6 @@ package pl.sinusoide.sinuschat.messenger
 
 import android.content.Context
 import android.net.Uri
-import android.util.Base64
 import android.util.Log
 import android.webkit.MimeTypeMap
 import org.json.JSONObject
@@ -29,7 +28,8 @@ object AttachmentSender {
     enum class Kind { IMAGE, VIDEO, FILE }
     class Item(val uri: Uri, val kind: Kind, val viewOnce: Boolean,
                val mime: String? = null, val keepOriginal: Boolean = false,
-               val packed: java.io.File? = null)
+               val packed: java.io.File? = null, val name: String? = null,
+               val original: Boolean = false)
 
     class Caption(val text: String, val replyToId: String?, val replyToText: String?)
 
@@ -42,8 +42,9 @@ object AttachmentSender {
         val recipients: Int
     )
 
-    private class State {
+    private class State(val conversationId: String) {
         @Volatile var progress: Float? = null
+        @Volatile var ready = false
         @Volatile var call: okhttp3.Call? = null
         @Volatile var cancelled = false
     }
@@ -61,8 +62,13 @@ object AttachmentSender {
 
     fun isActive(id: String): Boolean = states.containsKey(id)
 
-    fun send(ctx: Context, target: Target, items: List<Item>, caption: Caption? = null) {
-        if (items.isEmpty()) return
+    fun isPreparing(id: String): Boolean = states[id]?.ready == false
+
+    fun activeIn(conversationId: String): Map<String, Float> =
+        states.filter { it.value.conversationId == conversationId }.mapValues { it.value.progress ?: -1f }
+
+    fun send(ctx: Context, target: Target, items: List<Item>, caption: Caption? = null): List<String> {
+        if (items.isEmpty()) return emptyList()
         val app = ctx.applicationContext
         val albumId = if (items.count { it.kind == Kind.IMAGE && !it.viewOnce } >= 2)
             UUID.randomUUID().toString() else null
@@ -86,11 +92,12 @@ object AttachmentSender {
                 replyToId = if (withCaption) caption!!.replyToId else null,
                 replyToText = if (withCaption) caption!!.replyToText else null
             )
-            states[entity.id] = State()
+            states[entity.id] = State(target.conversationId)
             entity to item
         }
         AppExecutor.local { jobs.forEach { dao(app).insert(it.first) } }
-        for ((entity, item) in jobs) queue.execute { process(app, target, entity, item.uri, item.kind, item.keepOriginal, item.packed) }
+        for ((entity, item) in jobs) queue.execute { process(app, target, entity, item.uri, item.kind, item.keepOriginal, item.packed, item.original) }
+        return jobs.map { it.first.id }
     }
 
     fun sizeOf(ctx: Context, uri: Uri): Long {
@@ -120,7 +127,7 @@ object AttachmentSender {
             fileKey = null,
             attachmentName = name
         )
-        states[entity.id] = State()
+        states[entity.id] = State(entity.conversationId)
         local.execute {
             MediaManager.saveMedia(app, entity.conversationId, entity.id, name, bytes)
             dao(app).insert(entity)
@@ -159,7 +166,7 @@ object AttachmentSender {
             onError?.invoke(msg.conversationId, app.getString(R.string.upload_error))
             return
         }
-        states[msg.id] = State()
+        states[msg.id] = State(msg.conversationId)
         AppExecutor.local { dao(app).updateStatus(msg.id, MessageEntity.STATUS_UPLOADING) }
         queue.execute { process(app, target, msg.copy(status = MessageEntity.STATUS_UPLOADING), null, kindOf(name)) }
     }
@@ -180,7 +187,7 @@ object AttachmentSender {
     }
 
     private fun process(app: Context, t: Target, msg: MessageEntity, uri: Uri?, kind: Kind,
-                        keepOriginal: Boolean = false, packed: java.io.File? = null) {
+                        keepOriginal: Boolean = false, packed: java.io.File? = null, original: Boolean = false) {
         val st = states[msg.id] ?: return
         val name = msg.attachmentName ?: "plik"
         var temp: java.io.File? = null
@@ -191,7 +198,7 @@ object AttachmentSender {
             val source: java.io.File = if (uri != null) {
                 val dest = if (msg.viewOnce) java.io.File(packedDir(app), msg.id + ".tmp").also { temp = it } else local
                 val size = sizeOf(app, uri)
-                val copied = if (kind == Kind.IMAGE && !keepOriginal && size in 0..IMAGE_PREP_MAX) {
+                val copied = if (kind == Kind.IMAGE && !keepOriginal && !original && size in 0..IMAGE_PREP_MAX) {
                     val raw = app.contentResolver.openInputStream(uri)?.use { it.readBytes() }
                     if (raw == null) false else {
                         dest.writeBytes(ImagePrep.forSending(raw) ?: raw)
@@ -204,8 +211,11 @@ object AttachmentSender {
                 }
                 dropKeyboardCopy(app, uri)
                 if (!copied) { dest.delete(); fail(app, msg, app.getString(R.string.cant_read_file)); return }
-                if (kind == Kind.VIDEO && !keepOriginal && pl.sinusoide.sinuschat.util.VideoPrep.canStrip(name))
+                if (kind == Kind.IMAGE && !keepOriginal && (original || size !in 0..IMAGE_PREP_MAX)) cleanOriginal(dest)
+                if (kind == Kind.VIDEO && !keepOriginal && pl.sinusoide.sinuschat.util.VideoPrep.canStrip(name)) {
+                    if (!original) shrinkVideo(app, dest, st)
                     pl.sinusoide.sinuschat.util.VideoPrep.stripInPlace(dest) { st.cancelled }
+                }
                 dest
             } else local
             if (!source.exists()) { fail(app, msg, app.getString(R.string.cant_read_file)); return }
@@ -214,6 +224,7 @@ object AttachmentSender {
                 pl.sinusoide.sinuschat.util.VideoThumbs.ensure(app, msg.conversationId, msg.id, name)
                 onLocalChanged?.invoke(msg.conversationId)
             }
+            st.ready = true
             if (st.cancelled) return
 
             val payload: java.io.File = when {
@@ -231,8 +242,12 @@ object AttachmentSender {
             }
             if (st.cancelled) return
 
+            val payloadSize = payload.length()
             val result = FileUploader.uploadEncryptedFileBlocking(app, payload, name, t.recipients,
-                onProgress = { st.progress = it }, onCall = { st.call = it }, isCancelled = { st.cancelled })
+                onProgress = {
+                    st.progress = it
+                    pl.sinusoide.sinuschat.util.TransferStats.updateFraction(msg.id, it, payloadSize)
+                }, onCall = { st.call = it }, isCancelled = { st.cancelled })
             if (st.cancelled) return
             if (result == null) {
                 Log.w(TAG, "Wysyłka ${msg.id.take(8)}: upload nieudany (${payload.length() / 1024} KB)")
@@ -249,9 +264,36 @@ object AttachmentSender {
             if (!st.cancelled) fail(app, msg, app.getString(R.string.upload_error))
         } finally {
             states.remove(msg.id)
+            pl.sinusoide.sinuschat.util.TransferStats.end(msg.id)
             temp?.delete()
             packedNow?.delete()
             if (st.cancelled) discard(app, msg)
+        }
+    }
+
+    private fun cleanOriginal(file: java.io.File) {
+        if (ImagePrep.isPortable(file) && ImagePrep.scrubInPlace(file)) return
+        if (file.length() > IMAGE_PREP_MAX) return
+        ImagePrep.forSending(file.readBytes(), 100)?.let { file.writeBytes(it) }
+    }
+
+    private fun shrinkVideo(app: Context, file: java.io.File, st: State): Boolean {
+        if (!pl.sinusoide.sinuschat.util.VideoCompressor.worthIt(file)) return false
+        val small = java.io.File(file.parentFile, file.name + ".small.mp4")
+        val started = System.currentTimeMillis()
+        val ok = pl.sinusoide.sinuschat.util.VideoCompressor.compress(app, file, small) { st.cancelled }
+        try {
+            if (!ok || small.length() <= 0L || small.length() >= file.length()) return false
+            Log.d(TAG, "Film: ${file.length() / 1024} KB -> ${small.length() / 1024} KB w ${System.currentTimeMillis() - started} ms")
+            if (!small.renameTo(file)) {
+                small.inputStream().use { input -> file.outputStream().use { input.copyTo(it, 256 * 1024) } }
+            }
+            return true
+        } catch (e: Exception) {
+            Log.w(TAG, "Film: ${e.message}")
+            return false
+        } finally {
+            small.delete()
         }
     }
 
@@ -275,12 +317,7 @@ object AttachmentSender {
         val payload = GroupRepository.merge(JSONObject()
             .put("senderHash", t.myHash)
             .put("timestamp", msg.timestampMs), sealed)
-        val body = JSONObject()
-            .put("conversationId", t.conversationId)
-            .put("messageId", msg.id)
-            .put("kind", "group_attach")
-            .put("payloadB64", Base64.encodeToString(payload.toString().toByteArray(Charsets.UTF_8), Base64.NO_WRAP))
-        val resp = pl.sinusoide.sinuschat.network.ApiClient.post("/api/message", body, app)
+        val resp = GroupRepository.postGroupEvent(app, t.conversationId, msg.id, "group_attach", payload)
         val ok = resp != null
         val sentTs = GroupRepository.serverTime(resp) ?: msg.timestampMs
         dao(app).insert(msg.copy(
@@ -320,11 +357,11 @@ object AttachmentSender {
             Kind.IMAGE -> when {
                 mime == "image/png" -> "IMG_$stamp.png"
                 mime == "image/gif" -> "IMG_$stamp.gif"
-                item.keepOriginal && mime == "image/webp" -> "IMG_$stamp.webp"
+                (item.keepOriginal || item.original) && mime == "image/webp" -> "IMG_$stamp.webp"
                 else -> "IMG_$stamp.jpg"
             }
-            Kind.VIDEO -> withExtension(displayName(ctx, item.uri) ?: "VID_$stamp", mime, "mp4")
-            Kind.FILE -> withExtension(displayName(ctx, item.uri) ?: "plik_$stamp", mime, "bin")
+            Kind.VIDEO -> withExtension(item.name ?: displayName(ctx, item.uri) ?: "VID_$stamp", mime, "mp4")
+            Kind.FILE -> withExtension(item.name ?: displayName(ctx, item.uri) ?: "plik_$stamp", mime, "bin")
         }
     }
 

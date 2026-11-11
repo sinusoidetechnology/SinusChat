@@ -490,5 +490,59 @@ class IconDrawView @JvmOverloads constructor(
                     digits.mapIndexed { i, p -> Pop(p, 620f + i * 280f, 980f + i * 280f) }
             )
         }
+        private fun poly(vararg xy: Float) = Path().apply {
+            moveTo(xy[0], xy[1])
+            var i = 2
+            while (i + 1 < xy.size) { lineTo(xy[i], xy[i + 1]); i += 2 }
+        }
+
+        fun bluetooth(ctx: Context): Drawing = Drawing(
+            RectF(2f, 2f, 22f, 22f),
+            listOf(
+                Part(poly(5.7f, 5.7f, 12.4f, 12.4f, 16.4f, 16.3f, 11.6f, 21.4f, 11.5f, 12.2f), 2.4f, accent = false, fromMs = 120f, toMs = 1500f),
+                Part(poly(5.7f, 18.3f, 12.4f, 11.6f, 16.4f, 7.7f, 11.6f, 2.6f, 11.5f, 11.8f), 2.4f, accent = false, fromMs = 120f, toMs = 1500f)
+            ),
+            vectorPath(ctx, R.drawable.ic_bluetooth),
+            pops = listOfNotNull(vectorPath(ctx, R.drawable.ic_bluetooth)?.let { Pop(it, 1500f, 1501f, startScale = 1f) }),
+            exact = true
+        )
+
+        fun nearby(ctx: Context): Drawing = Drawing(
+            RectF(2f, 2f, 22f, 22f),
+            listOf(
+                Part(Path().apply { moveTo(12f, 2.6f); lineTo(21.4f, 12f); lineTo(12f, 21.4f); lineTo(2.6f, 12f); close() },
+                    2.8f, accent = false, fromMs = 120f, toMs = 1150f),
+                Part(poly(7.2f, 12f, 16.8f, 12f), 9.4f, accent = false, fromMs = 1100f, toMs = 1500f, cap = Paint.Cap.BUTT)
+            ),
+            vectorPath(ctx, R.drawable.ic_nearby),
+            pops = listOfNotNull(vectorPath(ctx, R.drawable.ic_nearby)?.let { Pop(it, 1500f, 1501f, startScale = 1f) }),
+            exact = true
+        )
+
+        fun connected(ctx: Context): Drawing = Drawing(
+            RectF(1f, 3f, 23f, 21f),
+            listOf(
+                Part(poly(12.2f, 16f, 4f, 16f, 4f, 5f, 20f, 5f, 20f, 7.2f), 2.6f, accent = false, fromMs = 120f, toMs = 1000f),
+                Part(poly(1.6f, 19f, 12.4f, 19f), 2.6f, accent = false, fromMs = 900f, toMs = 1200f),
+                Part(poly(15f, 10f, 15f, 19f, 21f, 19f, 21f, 9f, 15f, 9f, 15f, 10.5f), 2.6f, accent = false, fromMs = 1150f, toMs = 1850f),
+                Part(poly(18f, 11.75f, 18f, 11.8f), 2.4f, accent = false, fromMs = 1850f, toMs = 2000f)
+            ),
+            vectorPath(ctx, R.drawable.ic_connected),
+            pops = listOfNotNull(vectorPath(ctx, R.drawable.ic_connected)?.let { Pop(it, 2000f, 2001f, startScale = 1f) }),
+            exact = true
+        )
+
+        fun distance(ctx: Context): Drawing = Drawing(
+            RectF(1f, 6f, 23f, 18f),
+            listOf(
+                Part(poly(12f, 12f, 4.6f, 12f), 2.6f, accent = false, fromMs = 120f, toMs = 620f, cap = Paint.Cap.BUTT),
+                Part(poly(12f, 12f, 19.4f, 12f), 2.6f, accent = false, fromMs = 120f, toMs = 620f, cap = Paint.Cap.BUTT),
+                Part(poly(7.7f, 7.6f, 3.3f, 12f, 7.7f, 16.4f), 2.8f, accent = false, fromMs = 560f, toMs = 1060f),
+                Part(poly(16.3f, 7.6f, 20.7f, 12f, 16.3f, 16.4f), 2.8f, accent = false, fromMs = 560f, toMs = 1060f)
+            ),
+            vectorPath(ctx, R.drawable.ic_distance),
+            pops = listOfNotNull(vectorPath(ctx, R.drawable.ic_distance)?.let { Pop(it, 1060f, 1061f, startScale = 1f) }),
+            exact = true
+        )
     }
 }

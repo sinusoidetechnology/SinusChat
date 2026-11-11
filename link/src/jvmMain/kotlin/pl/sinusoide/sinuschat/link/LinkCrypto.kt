@@ -84,6 +84,21 @@ object LinkCrypto {
         return out.toByteArray()
     }
 
+    fun sealOnce(key: ByteArray, plain: ByteArray): ByteArray =
+        Cipher.getInstance("AES/GCM/NoPadding").run {
+            init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(128, ByteArray(12)))
+            doFinal(plain)
+        }
+
+    fun openOnce(key: ByteArray, sealed: ByteArray): ByteArray? = try {
+        Cipher.getInstance("AES/GCM/NoPadding").run {
+            init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(128, ByteArray(12)))
+            doFinal(sealed)
+        }
+    } catch (_: Exception) {
+        null
+    }
+
     class FrameCipher(key: ByteArray) {
         private val keySpec = SecretKeySpec(key, "AES")
         private val cipher = Cipher.getInstance("AES/GCM/NoPadding")

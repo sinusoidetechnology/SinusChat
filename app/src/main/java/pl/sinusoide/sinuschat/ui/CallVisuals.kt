@@ -136,6 +136,19 @@ class CallButtonView(
             }
         }
 
+    private var arrowIcon: Drawable? = null
+
+    var arrow = false
+        set(value) {
+            if (field == value) return
+            field = value
+            if (value && arrowIcon == null) arrowIcon = ContextCompat.getDrawable(context, pl.sinusoide.sinuschat.R.drawable.ic_chevron_down)?.mutate()
+            invalidate()
+        }
+
+    var arrowOpen = false
+        set(value) { if (field != value) { field = value; invalidate() } }
+
     init { isClickable = true; isFocusable = true }
 
     fun setIcon(res: Int) {
@@ -193,6 +206,22 @@ class CallButtonView(
             it.setTint(if (solidColor == null) blend(palette.text, if (palette.flow) 0xFF101820.toInt() else palette.onOrb, activeMix) else Color.WHITE)
             it.setBounds((cx - s / 2).toInt(), (cy - s / 2).toInt(), (cx + s / 2).toInt(), (cy + s / 2).toInt())
             it.draw(canvas)
+        }
+
+        if (arrow && solidColor == null) arrowIcon?.let {
+            val br = r * 0.32f
+            val bx = cx + r * 0.7f
+            val by = cy - r * 0.7f
+            fill.shader = null
+            fill.color = if (palette.flow) 0xF2FFFFFF.toInt() else palette.orb
+            canvas.drawCircle(bx, by, br, fill)
+            it.setTint(if (palette.flow) 0xFF101820.toInt() else palette.onOrb)
+            val s = br * 2.1f
+            canvas.save()
+            if (!arrowOpen) canvas.rotate(180f, bx, by)
+            it.setBounds((bx - s / 2).toInt(), (by - s / 2).toInt(), (bx + s / 2).toInt(), (by + s / 2).toInt())
+            it.draw(canvas)
+            canvas.restore()
         }
     }
 

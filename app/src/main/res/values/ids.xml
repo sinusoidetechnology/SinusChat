@@ -6,4 +6,5 @@
     <item name="retro_shape_bg" type="id" />
     <item name="insets_watch" type="id" />
     <item name="flow_check" type="id" />
+    <item name="last_seen_options" type="id" />
 </resources>

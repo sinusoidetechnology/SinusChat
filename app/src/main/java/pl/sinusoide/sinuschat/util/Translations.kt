@@ -108,6 +108,15 @@ object Translations {
         prefs(ctx).edit().putString("p_$conv", lang).apply()
     }
 
+    fun decisions(ctx: Context): List<Triple<String, String, Boolean>> =
+        prefs(ctx).all.mapNotNull { (k, v) ->
+            if (!k.startsWith("d_") || v !is String) return@mapNotNull null
+            val body = k.removePrefix("d_")
+            val lang = body.substringAfterLast('_', "")
+            val conv = body.substringBeforeLast('_', "")
+            if (conv.isEmpty() || lang !in LANGS) null else Triple(conv, lang, v == YES)
+        }
+
     fun resetDecisions(ctx: Context) {
         val p = prefs(ctx)
         val ed = p.edit()

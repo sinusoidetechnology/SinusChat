@@ -11,6 +11,7 @@ object MuteSettings {
     fun setMutedUntil(context: Context, conversationId: String, untilMs: Long) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putLong("mute_$conversationId", untilMs).apply()
+        pl.sinusoide.sinuschat.pclink.PcLinkHub.refreshChats()
     }
 
     fun getMutedUntil(context: Context, conversationId: String): Long {

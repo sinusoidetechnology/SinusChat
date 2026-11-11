@@ -145,6 +145,8 @@ class IncomingCallActivity : AppCompatActivity() {
     }
 
     private fun reject(declined: Boolean = true) {
+        pl.sinusoide.sinuschat.pclink.PcLinkCalls.onRingStopped(conversationId,
+            if (declined) pl.sinusoide.sinuschat.link.LinkFrame.CALL_DECLINED else pl.sinusoide.sinuschat.link.LinkFrame.CALL_NO_ANSWER)
         stopRinging()
         CallNotifier.cancel(this)
         if (fromHash.isNotEmpty()) CallNotifier.showMissedCall(this, conversationId, fromHash, fromName, isVideo, declined)

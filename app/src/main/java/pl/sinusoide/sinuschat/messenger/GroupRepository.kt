@@ -67,6 +67,9 @@ data class GroupMember(
 
 object GroupRepository {
 
+    const val CAP_GROUP_SEALED = "group_sealed"
+    val SEALED_GROUP_KINDS = setOf("msg", "group_attach")
+
     private const val TAG = "GroupRepository"
 
     fun createGroup(
@@ -187,7 +190,7 @@ object GroupRepository {
         }
     }
 
-    private fun permsOf(resp: JSONObject): JSONObject? {
+    fun permsOf(resp: JSONObject): JSONObject? {
         resp.optJSONObject("perms")?.let { return it }
         val raw = resp.optString("perms", "")
         if (raw.isEmpty() || raw == "null") return null
@@ -335,8 +338,8 @@ object GroupRepository {
         ApiClient.getObject("/api/user/$userHash", context)?.optBoolean("signal", false) == true
 
     fun sendTextBlocking(context: Context, groupId: String, myHash: String, text: String,
-                         replyId: String? = null, replyText: String? = null): Boolean {
-        val msgId = java.util.UUID.randomUUID().toString()
+                         replyId: String? = null, replyText: String? = null, id: String? = null): Boolean {
+        val msgId = id ?: java.util.UUID.randomUUID().toString()
         val now = System.currentTimeMillis()
         val dao = SinusChatDatabase.getInstance(context).messageDao()
         dao.insert(pl.sinusoide.sinuschat.data.MessageEntity(
@@ -416,13 +419,49 @@ object GroupRepository {
 
     fun serverTime(resp: JSONObject?): Long? = resp?.optLong("createdAt", 0L)?.takeIf { it > 0L }
 
-    private fun postGroupEvent(context: Context, groupId: String, messageId: String, kind: String, payload: JSONObject): JSONObject? {
+    fun postGroupEvent(context: Context, groupId: String, messageId: String, kind: String, payload: JSONObject): JSONObject? {
+        val payloadB64 = android.util.Base64.encodeToString(
+            payload.toString().toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
+        if (kind in SEALED_GROUP_KINDS && pl.sinusoide.sinuschat.network.WebSocketManager.serverHas(CAP_GROUP_SEALED)) {
+            sendSealedGroup(context, groupId, messageId, kind, payloadB64)?.let { return it.takeIf { r -> r.optBoolean("ok") } }
+        }
         val body = JSONObject()
             .put("conversationId", groupId)
             .put("messageId", messageId)
             .put("kind", kind)
-            .put("payloadB64", android.util.Base64.encodeToString(
-                payload.toString().toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP))
+            .put("payloadB64", payloadB64)
         return ApiClient.post("/api/message", body, context)
+    }
+
+    private fun sendSealedGroup(context: Context, groupId: String, messageId: String, kind: String, payloadB64: String): JSONObject? {
+        val me = SetupActivity.getUserPhoneHash(context)
+        val members = pl.sinusoide.sinuschat.util.GroupRoster.members(context, groupId)
+            ?: run { sendAccessBlocking(context, groupId); pl.sinusoide.sinuschat.util.GroupRoster.members(context, groupId) }
+            ?: return null
+        if (me !in members || members.size !in 2..pl.sinusoide.sinuschat.util.GroupReceipts.MAX_MEMBERS) return null
+        val others = members - me
+        if (others.none { pl.sinusoide.sinuschat.crypto.SealedSender.canSeal(context, it) }) return null
+        val plain = ArrayList<String>()
+        var createdAt = 0L
+        for (m in others) {
+            val r = pl.sinusoide.sinuschat.crypto.SealedSender.postToGroupMember(
+                context, groupId, m, messageId + "_" + m.take(16), kind, payloadB64)
+            when {
+                r.sent -> createdAt = maxOf(createdAt, r.createdAt)
+                r.noAccess -> plain += m
+                else -> return JSONObject().put("ok", false)
+            }
+        }
+        if (plain.isNotEmpty()) {
+            val body = JSONObject()
+                .put("conversationId", groupId)
+                .put("messageId", messageId)
+                .put("kind", kind)
+                .put("payloadB64", payloadB64)
+                .put("only", JSONArray(plain))
+            val resp = ApiClient.post("/api/message", body, context) ?: return JSONObject().put("ok", false)
+            if (createdAt == 0L) createdAt = resp.optLong("createdAt", 0L)
+        }
+        return JSONObject().put("ok", true).apply { if (createdAt > 0L) put("createdAt", createdAt) }
     }
 }

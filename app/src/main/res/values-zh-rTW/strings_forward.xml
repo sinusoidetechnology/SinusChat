@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="forward_to">轉傳給…</string>
+    <string name="no_chats">沒有對話</string>
+
+    <string name="forward_title_share">透過 SinusChat 傳送</string>
+    <string name="forward_search_hint">搜尋對話</string>
+    <string name="forward_you_forward">轉傳</string>
+    <string name="forward_you_share">分享</string>
+    <string name="forward_chats_label">最近的對話</string>
+    <string name="forward_no_results">沒有符合的對話</string>
+    <string name="forward_comment_hint">加入訊息…</string>
+    <string name="forward_send_cd">傳送</string>
+    <string name="forward_sending">傳送中… %1$d%%</string>
+    <string name="forward_sent_to">已傳送給 %1$s</string>
+    <string name="forward_sent_many">已傳送到 %1$d 個對話</string>
+    <string name="forward_not_sent">未傳送：</string>
+    <string name="forward_failed_line">%1$s：%2$s</string>
+    <string name="forward_skipped">已略過「%1$s」：檔案太大或無法讀取</string>
+    <string name="forward_too_large">「%1$s」太大，上限為 150 MB</string>
+    <string name="forward_limit">一次最多可以選擇 %1$d 個對話</string>
+    <string name="forward_view_once">單次檢視訊息無法轉傳</string>
+    <string name="forward_not_downloaded">部分附件尚未下載，請先在對話中開啟再轉傳</string>
+    <string name="forward_nothing">沒有可傳送的內容</string>
+    <string name="forward_unsafe">無法分享這個檔案</string>
+    <string name="forward_setup_first">請先設定 SinusChat</string>
+    <string name="forward_blocked_row">已封鎖的聯絡人</string>
+    <string name="forward_voice_no_groups">語音訊息只能轉傳到一對一對話</string>
+    <string name="forward_fail_generic">無法傳送</string>
+    <string name="forward_fail_blocked">此聯絡人已被封鎖</string>
+    <string name="forward_fail_upload">無法上傳檔案</string>
+    <string name="forward_fail_voice">無法下載錄音</string>
+    <string name="forward_fail_key">缺少加密金鑰，請在連上網路後再試一次</string>
+    <string name="forward_and">和</string>
+
+    <plurals name="forward_photos">
+        <item quantity="other">%d 張相片</item>
+    </plurals>
+    <plurals name="forward_videos">
+        <item quantity="other">%d 部影片</item>
+    </plurals>
+    <plurals name="forward_files">
+        <item quantity="other">%d 個檔案</item>
+    </plurals>
+    <plurals name="forward_voices">
+        <item quantity="other">%d 則語音訊息</item>
+    </plurals>
+    <plurals name="forward_texts">
+        <item quantity="other">%d 則訊息</item>
+    </plurals>
+    <plurals name="forward_more_files">
+        <item quantity="other">還有 %d 個檔案</item>
+    </plurals>
+    <plurals name="forward_more_texts">
+        <item quantity="other">還有 %d 則訊息</item>
+    </plurals>
+</resources>

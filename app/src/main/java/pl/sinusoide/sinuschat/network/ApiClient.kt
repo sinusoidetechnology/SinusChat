@@ -197,6 +197,127 @@ object ApiClient {
         }
     } catch (e: Exception) { Log.w("ApiClient", "GET plik: ${e.javaClass.simpleName}: ${e.message}"); target.delete(); null }
 
+    private const val RANGE_PART = 8L * 1024 * 1024
+    private const val RANGE_PARALLEL = 3
+    private const val RANGE_TRIES = 5
+
+    @Volatile private var downloadClientCache: Pair<OkHttpClient, OkHttpClient>? = null
+
+    private fun downloadClient(context: Context): OkHttpClient {
+        val base = httpClient(context)
+        downloadClientCache?.let { (b, c) -> if (b === base) return c }
+        val client = base.newBuilder()
+            .connectionPool(okhttp3.ConnectionPool(RANGE_PARALLEL * 2, 1, TimeUnit.MINUTES))
+            .protocols(listOf(okhttp3.Protocol.HTTP_1_1))
+            .readTimeout(60, TimeUnit.SECONDS)
+            .build()
+        downloadClientCache = base to client
+        return client
+    }
+
+    private class RangeJob(
+        val client: OkHttpClient,
+        val url: String,
+        val headers: Map<String, String>,
+        val channel: java.nio.channels.FileChannel,
+        val onBytes: ((Long, Long) -> Unit)?
+    ) {
+        val done = java.util.concurrent.atomic.AtomicLong(0)
+        @Volatile var total = -1L
+
+        fun request(from: Long, to: Long): Request = Request.Builder().url(url)
+            .apply { headers.forEach { (k, v) -> header(k, v) } }
+            .header("Range", "bytes=$from-$to")
+            .build()
+
+        fun copy(body: okhttp3.ResponseBody, from: Long, limit: Long): Long {
+            var pos = from
+            val buf = ByteArray(64 * 1024)
+            body.byteStream().use { input ->
+                while (pos < limit) {
+                    val n = input.read(buf, 0, minOf(buf.size.toLong(), limit - pos).toInt())
+                    if (n < 0) break
+                    val bb = java.nio.ByteBuffer.wrap(buf, 0, n)
+                    var at = pos
+                    while (bb.hasRemaining()) at += channel.write(bb, at)
+                    pos += n
+                    onBytes?.invoke(done.addAndGet(n.toLong()), total)
+                }
+            }
+            return pos - from
+        }
+
+        fun part(from: Long, to: Long): Boolean {
+            var pos = from
+            var failures = 0
+            while (pos <= to) {
+                val before = pos
+                try {
+                    client.newCall(request(pos, to)).execute().use { resp ->
+                        if (resp.code != 206) throw java.io.IOException("HTTP ${resp.code}")
+                        pos += copy(resp.body ?: throw java.io.IOException("brak treści"), pos, to + 1)
+                    }
+                } catch (e: Exception) {
+                    Log.w("ApiClient", "część $from: ${e.javaClass.simpleName}: ${e.message}")
+                }
+                if (pos > before) failures = 0
+                else if (++failures >= RANGE_TRIES) return false
+                else Thread.sleep(1000L * failures)
+            }
+            return true
+        }
+    }
+
+    fun getRangedToFile(context: Context, url: String, headers: Map<String, String>, target: java.io.File,
+                        onBytes: ((Long, Long) -> Unit)? = null): Int? = try {
+        target.delete()
+        java.io.RandomAccessFile(target, "rw").use { raf ->
+            val job = RangeJob(downloadClient(context), url, headers, raf.channel, onBytes)
+            var got = 0L
+            val code = job.client.newCall(job.request(0, RANGE_PART - 1)).execute().use { resp ->
+                val body = resp.body
+                when {
+                    body == null -> resp.code
+                    resp.code == 206 -> {
+                        job.total = resp.header("Content-Range")?.substringAfterLast('/')?.trim()?.toLongOrNull()
+                            ?: throw java.io.IOException("brak Content-Range")
+                        got = job.copy(body, 0, minOf(RANGE_PART, job.total))
+                        206
+                    }
+                    resp.code == 200 -> {
+                        job.total = body.contentLength()
+                        got = job.copy(body, 0, Long.MAX_VALUE)
+                        if (job.total in 0 until Long.MAX_VALUE && got != job.total) throw java.io.IOException("urwane pobieranie")
+                        200
+                    }
+                    else -> resp.code
+                }
+            }
+            if (code != 206) {
+                if (code != 200) target.delete()
+                return@use code
+            }
+            val total = job.total
+            val starts = generateSequence(got) { it + RANGE_PART }.takeWhile { it < total }.toList()
+            val next = java.util.concurrent.atomic.AtomicInteger(0)
+            val failed = java.util.concurrent.atomic.AtomicBoolean(false)
+            val worker = Runnable {
+                while (!failed.get()) {
+                    val i = next.getAndIncrement()
+                    if (i >= starts.size) break
+                    val from = starts[i]
+                    if (!job.part(from, minOf(from + RANGE_PART, total) - 1)) failed.set(true)
+                }
+            }
+            (1..minOf(RANGE_PARALLEL, starts.size)).map { Thread(worker, "range-download-$it").apply { start() } }
+                .forEach { it.join() }
+            if (failed.get() || raf.length() != total) {
+                target.delete()
+                null
+            } else 200
+        }
+    } catch (e: Exception) { Log.w("ApiClient", "GET plik: ${e.javaClass.simpleName}: ${e.message}"); target.delete(); null }
+
     fun rawGet(context: Context, url: String, headers: Map<String, String> = emptyMap()): Pair<Int, ByteArray>? = try {
         val req = Request.Builder().url(url)
             .apply { headers.forEach { (k, v) -> header(k, v) } }
@@ -293,6 +414,19 @@ object ApiClient {
     }
 
     private val USER_PATH = Regex("^/api/user/[a-f0-9]{64}$")
+
+    fun presenceBody(context: Context, hashes: Collection<String>): JSONObject {
+        val keys = JSONObject()
+        for (h in hashes) {
+            try {
+                pl.sinusoide.sinuschat.crypto.ProfileCrypto.contactKey(context, h)?.let { pk ->
+                    keys.put(h, android.util.Base64.encodeToString(
+                        pl.sinusoide.sinuschat.crypto.SealedSender.accessKey(pk), android.util.Base64.NO_WRAP))
+                }
+            } catch (_: Exception) {}
+        }
+        return JSONObject().put("hashes", org.json.JSONArray(hashes.toList())).put("keys", keys)
+    }
 
     private fun userAccessKey(context: Context, path: String): String? = try {
         pl.sinusoide.sinuschat.crypto.ProfileCrypto.contactKey(context, path.removePrefix("/api/user/"))?.let { pk ->
@@ -394,6 +528,19 @@ object ApiClient {
         kickedHandled = false
         reverifyHandled = false
     }
+    fun stillActive(context: Context): Boolean? = try {
+        val req = Request.Builder().url("$BASE_URL/api/messages/waiting")
+            .header("Authorization", "Bearer ${getToken(context) ?: ""}")
+            .get().build()
+        httpClient(context).newCall(req).execute().use { resp ->
+            when {
+                resp.code == 409 && resp.body?.string()?.contains("device_kicked") == true -> false
+                resp.isSuccessful -> true
+                else -> null
+            }
+        }
+    } catch (_: Exception) { null }
+
     fun onDeviceKicked(context: Context) {
         if (kickedHandled) return
         kickedHandled = true

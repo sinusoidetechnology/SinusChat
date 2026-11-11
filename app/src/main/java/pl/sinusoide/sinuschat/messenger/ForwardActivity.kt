@@ -29,7 +29,6 @@ import android.widget.HorizontalScrollView
 import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
@@ -118,7 +117,8 @@ class ForwardActivity : AppCompatActivity() {
     private lateinit var comment: EditText
     private lateinit var sendButton: FrameLayout
     private lateinit var sendIcon: ImageView
-    private lateinit var sendProgress: ProgressBar
+    private lateinit var sendProgress: pl.sinusoide.sinuschat.ui.SineProgressRing
+    @Volatile private var sendFraction: Float? = null
     private lateinit var status: TextView
     private val rows = RowAdapter()
     private var preview: View? = null
@@ -436,12 +436,15 @@ class ForwardActivity : AppCompatActivity() {
             setColorFilter(tc.onAccent)
         }
         sendButton.addView(sendIcon, FrameLayout.LayoutParams(px(22f), px(22f), Gravity.CENTER))
-        sendProgress = ProgressBar(this).apply {
-            isIndeterminate = true
-            indeterminateTintList = ColorStateList.valueOf(tc.onAccent)
+        sendProgress = pl.sinusoide.sinuschat.ui.SineProgressRing(this).apply {
+            color = tc.onAccent
+            disc = 0
+            showCancel = false
+            isClickable = false
+            progress = { sendFraction }
             visibility = View.GONE
         }
-        sendButton.addView(sendProgress, FrameLayout.LayoutParams(px(26f), px(26f), Gravity.CENTER))
+        sendButton.addView(sendProgress, FrameLayout.LayoutParams(px(40f), px(40f), Gravity.CENTER))
         FlowGlass.pressable(sendButton)
         row.addView(sendButton, LinearLayout.LayoutParams(px(48f), px(48f)).apply { marginStart = px(8f) })
         panel.addView(row, LinearLayout.LayoutParams(-1, -2))
@@ -742,6 +745,7 @@ class ForwardActivity : AppCompatActivity() {
     private fun send() {
         if (sending || selected.isEmpty() || items.isEmpty()) return
         sending = true
+        sendFraction = null
         setSendingUi(true)
         val targets = selected.values.map { it.target }
         val text = comment.text.toString()
@@ -750,6 +754,7 @@ class ForwardActivity : AppCompatActivity() {
         AppExecutor.io {
             val outcome = try {
                 ForwardSender.sendBlocking(appCtx, targets, list, text) { done, total ->
+                    sendFraction = if (done > 0 && total > 0) done.toFloat() / total else null
                     if (!isDestroyed && sending) status.text = getString(R.string.forward_sending, done * 100 / total)
                 }
             } catch (e: Throwable) {

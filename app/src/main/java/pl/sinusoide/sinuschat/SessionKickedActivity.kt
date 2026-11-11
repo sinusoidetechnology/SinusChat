@@ -29,10 +29,64 @@ class SessionKickedActivity : AppCompatActivity() {
 
         onBackPressedDispatcher.addCallback(this,
             object : androidx.activity.OnBackPressedCallback(true) {
-                override fun handleOnBackPressed() { wipeAndExit() }
+                override fun handleOnBackPressed() { moveTaskToBack(true) }
             })
 
-        findViewById<Button>(R.id.btn_understood).setOnClickListener { wipeAndExit() }
+        val button = findViewById<Button>(R.id.btn_understood)
+        button.setOnClickListener {
+            button.isEnabled = false
+            check { active ->
+                button.isEnabled = true
+                when (active) {
+                    false -> wipeAndExit()
+                    else -> pl.sinusoide.sinuschat.util.PopupHelper.show(this, getString(R.string.session_moved_check_failed))
+                }
+            }
+        }
+    }
+
+    private val handler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val recheck = object : Runnable {
+        override fun run() {
+            check(null)
+            handler.postDelayed(this, RECHECK_MS)
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        handler.removeCallbacks(recheck)
+        handler.post(recheck)
+    }
+
+    override fun onPause() {
+        handler.removeCallbacks(recheck)
+        super.onPause()
+    }
+
+    private fun check(then: ((Boolean?) -> Unit)?) {
+        val app = applicationContext
+        pl.sinusoide.sinuschat.util.AppExecutor.io {
+            val active = pl.sinusoide.sinuschat.network.ApiClient.stillActive(app)
+            pl.sinusoide.sinuschat.util.AppExecutor.main {
+                if (isFinishing || isDestroyed) return@main
+                if (active == true) restore() else then?.invoke(active)
+            }
+        }
+    }
+
+    private fun restore() {
+        handler.removeCallbacks(recheck)
+        pl.sinusoide.sinuschat.util.LinkLog.add(this, "kick", "fałszywe przeniesienie sesji, wracam do aplikacji")
+        pl.sinusoide.sinuschat.network.ApiClient.resetSession()
+        pl.sinusoide.sinuschat.network.WebSocketManager.clearKick(applicationContext)
+        startActivity(android.content.Intent(this, MainActivity::class.java)
+            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK))
+        finish()
+    }
+
+    private companion object {
+        const val RECHECK_MS = 15_000L
     }
 
     private fun wipeAndExit() {

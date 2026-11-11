@@ -495,7 +495,12 @@ class GroupProfileActivity : AppCompatActivity() {
         val name = currentName.ifEmpty { groupName }
         val letterBmp = AvatarHelper.createLetterBitmap(
             AvatarHelper.initialOf(name).takeIf { it != "?" } ?: "G", currentAvatarColor, size)
-        pl.sinusoide.sinuschat.ui.PhotoViewer.show(this) { img ->
+        pl.sinusoide.sinuschat.ui.PhotoViewer.show(this, onDownload = {
+            val url = currentAvatarUrl?.takeIf { it.isNotEmpty() }
+            val big = pl.sinusoide.sinuschat.util.AvatarSaver.letter(name.ifBlank { "G" }, currentAvatarColor)
+            if (url != null) pl.sinusoide.sinuschat.util.AvatarSaver.saveFrom(this, url, { big }, name)
+            else pl.sinusoide.sinuschat.util.AvatarSaver.save(this, big, name)
+        }) { img ->
             img.setImageBitmap(letterBmp)
             currentAvatarUrl?.takeIf { it.isNotEmpty() }?.let { url ->
                 val ph = BitmapDrawable(resources, letterBmp)

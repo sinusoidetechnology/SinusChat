@@ -8,8 +8,6 @@
 -keep class org.torproject.** { *; }
 -keep class net.freehaven.tor.control.** { *; }
 -keep class com.google.ai.edge.litertlm.** { *; }
--keep class org.tensorflow.lite.** { *; }
--keep class com.google.android.gms.tflite.** { *; }
 -keep class com.duckduckgo.translatekit.** { *; }
 
 -keep class com.google.crypto.tink.shaded.protobuf.InvalidProtocolBufferException

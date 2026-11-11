@@ -17,6 +17,7 @@ object BlockList {
         if (hash.isEmpty()) return
         val app = context.applicationContext
         prefs(app).edit().putBoolean(key(hash), true).apply()
+        pl.sinusoide.sinuschat.pclink.PcLinkHub.refreshChats()
         AppExecutor.io {
             syncServer(app)
             pl.sinusoide.sinuschat.crypto.ProfileCrypto.rotate(app)
@@ -28,6 +29,7 @@ object BlockList {
         if (hash.isEmpty()) return
         val app = context.applicationContext
         prefs(app).edit().remove(key(hash)).apply()
+        pl.sinusoide.sinuschat.pclink.PcLinkHub.refreshChats()
         AppExecutor.io { syncServer(app) }
     }
 

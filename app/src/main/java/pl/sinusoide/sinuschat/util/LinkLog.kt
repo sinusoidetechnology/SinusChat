@@ -17,18 +17,39 @@ object LinkLog {
     private const val PREFS = "link_log"
     private const val KEY = "events"
     private const val KEY_STACK = "last_crash"
-    private const val MAX = 25
+    private const val MAX = 400
+    private const val RETAIN_MS = 3 * 24 * 60 * 60_000L
+    private const val THROTTLE_MS = 10 * 60_000L
+    private val lastByStep = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
+    @Synchronized
     fun add(context: Context, step: String, detail: String = "", sync: Boolean = false) {
         try {
             val p = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             val all = runCatching { JSONArray(p.getString(KEY, "[]")) }.getOrElse { JSONArray() }
-            all.put(JSONObject().put("t", System.currentTimeMillis()).put("s", step).put("d", detail.take(240)))
-            val kept = JSONArray()
-            for (i in maxOf(0, all.length() - MAX) until all.length()) kept.put(all.get(i))
-            val edit = p.edit().putString(KEY, kept.toString())
+            val now = System.currentTimeMillis()
+            all.put(JSONObject().put("t", now).put("s", step).put("d", detail.take(240)))
+            val edit = p.edit().putString(KEY, recent(all, now).toString())
             if (sync) edit.commit() else edit.apply()
         } catch (_: Exception) {}
+    }
+
+    fun addThrottled(context: Context, step: String, detail: String = "") {
+        val now = System.currentTimeMillis()
+        if (now - (lastByStep[step] ?: 0L) < THROTTLE_MS) return
+        lastByStep[step] = now
+        add(context, step, detail)
+    }
+
+    private fun recent(all: JSONArray, now: Long): JSONArray {
+        val fresh = ArrayList<JSONObject>()
+        for (i in 0 until all.length()) {
+            val o = all.optJSONObject(i) ?: continue
+            if (now - o.optLong("t") < RETAIN_MS) fresh += o
+        }
+        val kept = JSONArray()
+        for (i in maxOf(0, fresh.size - MAX) until fresh.size) kept.put(fresh[i])
+        return kept
     }
 
     fun crash(context: Context, e: Throwable) {
@@ -47,8 +68,8 @@ object LinkLog {
 
     fun lastCrash(context: Context): String = try {
         val raw = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_STACK, null)
-        if (raw.isNullOrEmpty()) "" else {
-            val at = raw.substringBefore('\n').toLongOrNull() ?: 0L
+        val at = raw?.substringBefore('\n')?.toLongOrNull() ?: 0L
+        if (raw.isNullOrEmpty() || System.currentTimeMillis() - at >= RETAIN_MS) "" else {
             SimpleDateFormat("dd.MM HH:mm:ss", Locale.ROOT).format(Date(at)) + " " + raw.substringAfter('\n')
         }
     } catch (_: Exception) { "" }
@@ -75,17 +96,22 @@ object LinkLog {
         }
     } catch (_: Exception) { "?" }
 
-    fun report(context: Context): String {
+    fun report(context: Context, maxChars: Int = 9000): String {
         val all = try {
-            JSONArray(context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, "[]"))
+            recent(JSONArray(context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, "[]")),
+                System.currentTimeMillis())
         } catch (_: Exception) { JSONArray() }
         if (all.length() == 0) return ""
         val fmt = SimpleDateFormat("dd.MM HH:mm:ss", Locale.ROOT)
-        return buildString {
-            for (i in 0 until all.length()) {
-                val o = all.optJSONObject(i) ?: continue
-                appendLine("${fmt.format(Date(o.optLong("t")))} ${o.optString("s")} ${o.optString("d")}".trim())
-            }
-        }.trim()
+        val lines = ArrayList<String>()
+        var size = 0
+        for (i in all.length() - 1 downTo 0) {
+            val o = all.optJSONObject(i) ?: continue
+            val line = "${fmt.format(Date(o.optLong("t")))} ${o.optString("s")} ${o.optString("d")}".trim()
+            if (size + line.length + 1 > maxChars) break
+            size += line.length + 1
+            lines += line
+        }
+        return lines.asReversed().joinToString("\n")
     }
 }

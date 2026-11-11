@@ -172,15 +172,8 @@ class NewChatActivity : AppCompatActivity() {
                     resultCard.visibility = View.VISIBLE
                     resultName.text = name
                     resultAvatar.text = pl.sinusoide.sinuschat.util.AvatarHelper.initialOf(name)
-                    val statusText = if (isOnline) {
-                        getString(R.string.active_now)
-                    } else if (bestTs > 0) {
-                        getString(R.string.last_seen_prefix) + " " + formatRelativeTime(bestTs)
-                    } else {
-                        getString(R.string.active_recently)
-                    }
-                    
-                    resultStatus.text = statusText
+                    if (!isOnline && bestTs > 0) pl.sinusoide.sinuschat.util.LastSeenText.show(resultStatus, bestTs)
+                    else resultStatus.text = getString(if (isOnline) R.string.active_now else R.string.active_recently)
                     resultStatus.setTextColor(
                         if (isOnline) Color.parseColor("#2ECC71") else Color.parseColor("#9B9B9B"))
 
@@ -217,21 +210,6 @@ class NewChatActivity : AppCompatActivity() {
 
     override fun onPause() {
         super.onPause()
-    }
-
-    private fun formatRelativeTime(ms: Long): String {
-        val diff = pl.sinusoide.sinuschat.util.ServerTime.ageMs(ms)
-        if (diff < 60_000) return getString(R.string.just_now)
-        val minutes = (diff / 60_000).toInt()
-        if (minutes < 60) return resources.getQuantityString(R.plurals.minutes_ago, minutes, minutes)
-        val hours = (diff / 3_600_000).toInt()
-        if (hours < 24) return resources.getQuantityString(R.plurals.hours_ago, hours, hours)
-        val days = (diff / 86_400_000L).toInt()
-        if (days < 30) return resources.getQuantityString(R.plurals.days_ago, days, days)
-        val months = (days / 30)
-        if (months < 12) return resources.getQuantityString(R.plurals.months_ago, months, months)
-        val years = (days / 365)
-        return resources.getQuantityString(R.plurals.years_ago, years, years)
     }
 
     private fun updateStartChatButtonForBlock(otherHash: String) {

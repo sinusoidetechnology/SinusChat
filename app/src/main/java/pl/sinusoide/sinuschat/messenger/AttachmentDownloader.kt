@@ -60,7 +60,8 @@ object AttachmentDownloader {
             try {
                 val ok = FileUploader.downloadDecryptToFile(app, fileId, key, local,
                     onProgress = { p -> st.progress = p },
-                    onMissing = { pl.sinusoide.sinuschat.util.MediaGone.mark(app, msg.id) })
+                    onMissing = { pl.sinusoide.sinuschat.util.MediaGone.mark(app, msg.id) },
+                    onBytes = { done, total -> pl.sinusoide.sinuschat.util.TransferStats.update(msg.id, done, total) })
                 if (ok && local.exists() && local.length() > 0) {
                     file = local
                     pl.sinusoide.sinuschat.util.VideoThumbs.ensure(app, msg.conversationId, msg.id, name)
@@ -68,6 +69,7 @@ object AttachmentDownloader {
             } catch (e: Exception) {
                 Log.e(TAG, "Pobieranie ${msg.id.take(8)}: ${e.message}")
             }
+            pl.sinusoide.sinuschat.util.TransferStats.end(msg.id)
             if (file == null) failedAt[msg.id] = System.currentTimeMillis() else failedAt.remove(msg.id)
             val callbacks = synchronized(states) {
                 states.remove(msg.id)

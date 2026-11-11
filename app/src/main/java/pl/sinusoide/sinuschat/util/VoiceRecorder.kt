@@ -19,6 +19,13 @@ class VoiceRecorder(private val context: Context) {
     var lastDurationSeconds: Int = 0
         private set
 
+    @Volatile var limitReached = false
+        private set
+
+    companion object {
+        const val MAX_BYTES = 149L * 1024 * 1024
+    }
+
     fun start(): Boolean {
         return try {
             val file = File(context.cacheDir, "voice_${System.currentTimeMillis()}.ogg")
@@ -34,13 +41,18 @@ class VoiceRecorder(private val context: Context) {
                 setAudioEncoder(MediaRecorder.AudioEncoder.OPUS)
                 setAudioSamplingRate(16000)
                 setAudioEncodingBitRate(32000)
-                setMaxDuration(120_000)
+                setMaxFileSize(MAX_BYTES)
+                setOnInfoListener { _, what, _ ->
+                    if (what == MediaRecorder.MEDIA_RECORDER_INFO_MAX_FILESIZE_REACHED ||
+                        what == MediaRecorder.MEDIA_RECORDER_INFO_MAX_DURATION_REACHED) limitReached = true
+                }
                 setOutputFile(file.absolutePath)
                 prepare()
                 start()
             }
             recorder = rec
             outputFile = file
+            limitReached = false
             startTimeMs = System.currentTimeMillis()
             Log.d(TAG, "Recording started: ${file.path}")
             true
@@ -58,6 +70,16 @@ class VoiceRecorder(private val context: Context) {
     }
 
     fun stop(): File? {
+        if (limitReached) {
+            lastDurationSeconds = durationSeconds
+            try { recorder?.stop() } catch (_: Exception) {}
+            try { recorder?.release() } catch (_: Exception) {}
+            recorder = null
+            startTimeMs = 0
+            val file = outputFile
+            outputFile = null
+            return file?.takeIf { it.exists() && it.length() > 0 }
+        }
         return try {
             val duration = durationSeconds
             lastDurationSeconds = duration

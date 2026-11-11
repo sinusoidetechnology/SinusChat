@@ -52,7 +52,7 @@ object SafeEngine {
         val uri = try { Uri.parse(url) } catch (_: Exception) { null } ?: return
         val open = {
             try {
-                activity.startActivity(Intent(Intent.ACTION_VIEW, uri))
+                activity.startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             } catch (_: Exception) {
                 PopupHelper.showError(activity, activity.getString(R.string.link_open_failed))
             }

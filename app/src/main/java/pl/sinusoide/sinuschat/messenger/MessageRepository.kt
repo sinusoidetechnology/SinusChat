@@ -60,10 +60,11 @@ object MessageRepository {
         replyToId: String? = null,
         replyToText: String? = null,
         expiresAtMs: Long? = null,
-        translation: Translations.Wire? = null
+        translation: Translations.Wire? = null,
+        id: String? = null
     ) {
         val entity = MessageEntity(
-            id = UUID.randomUUID().toString(),
+            id = id ?: UUID.randomUUID().toString(),
             conversationId = conversationId,
             senderHash = myHash,
             text = text,
@@ -924,6 +925,7 @@ object MessageRepository {
         }
         try { MediaManager.voiceCacheFile(context, messageId).delete() } catch (_: Exception) {}
         d.deleteById(messageId)
+        msg?.let { pl.sinusoide.sinuschat.pclink.PcLinkHub.onMessagesDeleted(it.conversationId, listOf(it.id)) }
     }
 
     fun insertSystemMessage(

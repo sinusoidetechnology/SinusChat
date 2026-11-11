@@ -185,6 +185,10 @@
     <string name="view_once_already_opened">This file was already opened and deleted</string>
     <string name="view_once_not_in_groups">View-once files only work in private chats</string>
     <string name="view_once_media_only">Only photos and videos can be sent as view-once</string>
+    <string name="original_quality">Original quality</string>
+    <string name="original_quality_on">Original quality: sent uncompressed, in full resolution</string>
+    <string name="original_quality_off">Standard quality: smaller file, faster sending</string>
+    <string name="transfer_speed_eta">%1$s/s · %2$s left</string>
 
     <string name="error_connection">Connection error</string>
     <string name="error_sending">Error sending</string>
@@ -212,6 +216,8 @@
     <string name="notif_bg_listening">Listening for messages</string>
     <string name="notif_bg_offline">Offline mode</string>
     <string name="notif_bg_checking">Checking for new messages</string>
+    <string name="bg_data_off_title">Background data is off</string>
+    <string name="bg_data_off_text">Messages will only arrive when you open SinusChat. Tap to allow background data.</string>
     <string name="notif_added_to_group_format">Added to group: %s</string>
 
     <string name="account">Account</string>
@@ -363,6 +369,7 @@
     <string name="session_moved_title">Session moved</string>
     <string name="session_moved_desc">Your account is now active on a new device. This device has been safely logged out — your data is intact.</string>
     <string name="session_moved_hint">If it wasn\'t you logging in — change your email password.</string>
+    <string name="session_moved_check_failed">Could not check the session. Check your internet connection and try again.</string>
     <string name="session_moved_cd">Session moved to another device</string>
 
     <string name="app_theme_title">APP THEME</string>
@@ -464,6 +471,10 @@
     <string name="disappearing_trigger_received">From received</string>
     <string name="last_seen_prefix">Last seen </string>
     <string name="just_now">just now</string>
+    <string name="last_seen_short">Active %1$s</string>
+    <string name="ago_min_short">%1$d min ago</string>
+    <string name="ago_hour_short">%1$d h ago</string>
+    <string name="ago_month_short">%1$d mo ago</string>
     <string name="peer_screenshot_attempt">The other person tried to take a screenshot</string>
 
     <plurals name="files_plural">
@@ -904,6 +915,11 @@
     <string name="call_remote_video_on">%1$s turned on their camera</string>
     <string name="call_turn_on_my_camera">Turn on mine</string>
     <string name="call_camera_permission">No camera access</string>
+    <string name="call_route_phone">Phone</string>
+    <string name="call_route_speaker">Speaker</string>
+    <string name="call_route_bluetooth">Bluetooth</string>
+    <string name="call_camera_failed">Couldn\'t turn on the camera</string>
+    <string name="peer_screenshot_attempt_call">The other person tried to take a screenshot during the call</string>
     <string name="call_video_busy">Wait a moment and try again</string>
     <string name="lock_pin_placeholder">Enter PIN</string>
     <string name="lock_show_dots">Show PIN dots</string>
@@ -2067,4 +2083,22 @@
     <string name="retro_login_hint">To begin, enter your PIN</string>
     <string name="draft_prefix">Draft:</string>
     <string name="lang_chinese_trad">Traditional Chinese</string>
+    <string name="report_title_desktop">Report a problem Desktop</string>
+    <string name="report_hero_title_desktop">Help improve SinusChat-Desktop</string>
+    <string name="report_diag_desc_desktop">Version, computer, connection to the phone and the computer app\'s settings. No messages or contacts.</string>
+    <string name="report_diag_waiting">Sending diagnostic data to the phone…</string>
+    <string name="report_diag_pc_failed">Couldn\'t get the diagnostic data from the computer. Check that the computer is connected, or turn off including the data.</string>
+    <string name="report_platform_desktop">Computer</string>
+    <string name="report_sending_app">Sending report: %1$s</string>
+    <string name="updater_github">Not on Google Play yet? Download from GitHub</string>
+    <string name="terms_update_title">We have updated our terms</string>
+    <string name="terms_update_desc">We changed the terms of service, the privacy policy or the licence. To keep using SinusChat, read the new terms and confirm that you accept them.</string>
+    <string name="terms_update_date">In effect from %1$s</string>
+    <string name="terms_update_accept">I accept</string>
+    <string name="terms_update_decline">I do not accept</string>
+    <string name="terms_update_declined">You cannot use SinusChat without accepting the new terms. You can come back and accept them at any time.</string>
+    <string name="terms_update_close">Close the app</string>
+    <string name="avatar_download">Download</string>
+    <string name="avatar_saved">Photo saved to %1$s</string>
+    <string name="avatar_save_failed">Could not save the photo</string>
 </resources>

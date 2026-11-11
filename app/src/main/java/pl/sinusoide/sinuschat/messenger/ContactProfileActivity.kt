@@ -289,7 +289,7 @@ class ContactProfileActivity : AppCompatActivity() {
                 statusView.setTextColor(Color.parseColor("#2ECC71"))
             }
             lastSeenMs > 0 -> {
-                statusView.text = formatLastSeen(lastSeenMs)
+                pl.sinusoide.sinuschat.util.LastSeenText.show(statusView, lastSeenMs)
                 statusView.setTextColor(Color.parseColor("#8AA0B8"))
             }
             else -> {
@@ -421,7 +421,15 @@ class ContactProfileActivity : AppCompatActivity() {
     }
 
     private fun showFullScreenAvatar(url: String?, placeholder: android.graphics.drawable.Drawable) {
-        pl.sinusoide.sinuschat.ui.PhotoViewer.show(this) { img ->
+        val saveName = otherUserName.ifBlank { "SinusChat" }
+        pl.sinusoide.sinuschat.ui.PhotoViewer.show(this, onDownload = { img ->
+            if (!url.isNullOrEmpty()) {
+                pl.sinusoide.sinuschat.util.AvatarSaver.saveFrom(this, url, { bigLetterBitmap() }, saveName)
+            } else {
+                pl.sinusoide.sinuschat.util.AvatarSaver.save(this,
+                    pl.sinusoide.sinuschat.util.AvatarSaver.letter(otherUserName, AvatarHelper.getContactColor(this, otherUserHash)), saveName)
+            }
+        }) { img ->
             if (!url.isNullOrEmpty()) {
                 Glide.with(this)
                     .load(url)
@@ -563,26 +571,6 @@ class ContactProfileActivity : AppCompatActivity() {
         pl.sinusoide.sinuschat.util.BlockList.block(this, otherUserHash)
         PopupHelper.show(this, getString(R.string.blocked_toast, otherUserName))
         finish()
-    }
-
-    private fun formatLastSeen(ms: Long): String {
-        if (ms == 0L) return ""
-        return getString(R.string.last_seen_prefix) + " " + relativeTimeAgo(ms)
-    }
-
-    private fun relativeTimeAgo(ms: Long): String {
-        val diff = pl.sinusoide.sinuschat.util.ServerTime.ageMs(ms)
-        if (diff < 60_000) return getString(R.string.just_now)
-        val minutes = (diff / 60_000).toInt()
-        if (minutes < 60) return resources.getQuantityString(R.plurals.minutes_ago, minutes, minutes)
-        val hours = (diff / 3_600_000).toInt()
-        if (hours < 24) return resources.getQuantityString(R.plurals.hours_ago, hours, hours)
-        val days = (diff / 86_400_000L).toInt()
-        if (days < 30) return resources.getQuantityString(R.plurals.days_ago, days, days)
-        val months = days / 30
-        if (months < 12) return resources.getQuantityString(R.plurals.months_ago, months, months)
-        val years = (days / 365).coerceAtLeast(1)
-        return resources.getQuantityString(R.plurals.years_ago, years, years)
     }
 
     fun showSafetyNumber() {

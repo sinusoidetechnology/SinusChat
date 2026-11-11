@@ -32,6 +32,7 @@ object ContactCache {
         }.apply()
         context.sendBroadcast(android.content.Intent("pl.sinusoide.sinuschat.REFRESH_CONVERSATIONS")
             .setPackage(context.packageName))
+        pl.sinusoide.sinuschat.pclink.PcLinkHub.refreshChats()
     }
 
     fun display(context: Context, hash: String, name: String?): String? =
@@ -41,11 +42,13 @@ object ContactCache {
 
     fun saveAvatarUrl(context: Context, hash: String, url: String?) {
         if (hash.isEmpty()) return
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit().also {
-                if (!url.isNullOrEmpty()) it.putString("av_$hash", url)
-                else it.remove("av_$hash")
-            }.apply()
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val old = prefs.getString("av_$hash", null)
+        prefs.edit().also {
+            if (!url.isNullOrEmpty()) it.putString("av_$hash", url)
+            else it.remove("av_$hash")
+        }.apply()
+        if (old != url?.takeIf { it.isNotEmpty() }) pl.sinusoide.sinuschat.pclink.PcLinkHub.onAvatarChanged(hash)
     }
 
     fun storedAvatarUrl(context: Context, hash: String): String? =

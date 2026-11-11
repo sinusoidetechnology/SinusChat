@@ -18,6 +18,9 @@ object MessageNotifier {
     private const val TAG = "MessageNotifier"
 
     private const val SUMMARY_NOTIF_ID = 9100
+    private const val BG_DATA_NOTIF_ID = 9101
+    private const val KEY_BG_DATA_HINT = "bg_data_hint_at"
+    private const val BG_DATA_HINT_EVERY_MS = 12 * 3_600_000L
 
     fun createChannel(context: Context) {
         channelId(context)
@@ -396,6 +399,37 @@ object MessageNotifier {
 
     fun dismissSummary(context: Context) {
         try { NotificationManagerCompat.from(context).cancel(SUMMARY_NOTIF_ID) } catch (_: Exception) {}
+    }
+
+    fun showBackgroundDataOff(context: Context) {
+        val marks = marks(context)
+        val now = System.currentTimeMillis()
+        if (now - marks.getLong(KEY_BG_DATA_HINT, 0L) < BG_DATA_HINT_EVERY_MS) return
+        if (!NotificationPrefs.messagesEnabled(context) && !NotificationPrefs.groupsEnabled(context)) return
+        marks.edit().putLong(KEY_BG_DATA_HINT, now).apply()
+        createChannel(context)
+        val settings = Intent(android.provider.Settings.ACTION_IGNORE_BACKGROUND_DATA_RESTRICTIONS_SETTINGS,
+            android.net.Uri.parse("package:" + context.packageName))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val target = if (settings.resolveActivity(context.packageManager) != null) settings
+            else Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        val pi = PendingIntent.getActivity(context, BG_DATA_NOTIF_ID, target,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val text = context.getString(R.string.bg_data_off_text)
+        val notif = NotificationCompat.Builder(context, channelId(context))
+            .setSmallIcon(R.drawable.ic_stat_name)
+            .setContentTitle(context.getString(R.string.bg_data_off_title))
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .setContentIntent(pi)
+            .setColor(0xFF5288C1.toInt())
+            .setSilent(NotificationPrefs.silentMessage(context))
+            .build()
+        try {
+            NotificationManagerCompat.from(context).notify(BG_DATA_NOTIF_ID, notif)
+        } catch (e: SecurityException) { Log.w(TAG, "Notif denied", e) }
     }
 
     fun showPendingSummary(context: Context, count: Int) {

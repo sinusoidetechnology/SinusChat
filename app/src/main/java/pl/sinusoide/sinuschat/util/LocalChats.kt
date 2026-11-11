@@ -159,10 +159,10 @@ object LocalChats {
 
     private fun fillPresence(ctx: Context, rows: List<JSONObject>) {
         if (rows.isEmpty()) return
-        val hashes = JSONArray()
-        rows.take(200).forEach { hashes.put(it.optString("other_hash")) }
+        val hashes = rows.take(200).map { it.optString("other_hash") }
         val resp = try {
-            pl.sinusoide.sinuschat.network.ApiClient.post("/api/presence", JSONObject().put("hashes", hashes), ctx)
+            pl.sinusoide.sinuschat.network.ApiClient.post("/api/presence",
+                pl.sinusoide.sinuschat.network.ApiClient.presenceBody(ctx, hashes), ctx)
         } catch (_: Exception) { null } ?: return
         for (r in rows) {
             val p = resp.optJSONObject(r.optString("other_hash")) ?: continue

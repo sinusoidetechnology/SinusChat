@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tor_route_title">Tor 路線</string>
+    <string name="tor_route_sub">查看你的連線經過哪些國家</string>
+    <string name="tor_route_section">你的路線</string>
+    <string name="tor_route_security">安全性</string>
+    <string name="tor_route_off">請在「隱私」設定中開啟 Tor，即可查看路線。</string>
+    <string name="tor_route_loading">正在檢查路線…</string>
+    <string name="tor_route_none">Tor 仍在建立路線，請稍後再試。</string>
+    <string name="tor_route_you">你的手機</string>
+    <string name="tor_route_guard">入口節點</string>
+    <string name="tor_route_middle">中繼節點</string>
+    <string name="tor_route_exit">出口節點</string>
+    <string name="tor_route_server">SinusChat 伺服器</string>
+    <string name="tor_route_unknown_country">未知國家</string>
+    <string name="tor_route_same">這條路線上有兩個節點位於同一個國家：%1$s。</string>
+    <string name="tor_route_new">新路線</string>
+    <string name="tor_route_new_done">正在建立新路線…</string>
+    <string name="tor_route_distinct">避開相同國家</string>
+    <string name="tor_route_distinct_desc">路線不會兩次經過同一個國家。這是額外的保護措施：連線可能會稍微久一點，而且你的路線會和其他 Tor 使用者的路線略有不同。</string>
+    <string name="tor_route_footer">Tor 會刻意將入口節點保留數個月，因為這樣能讓你更難被追蹤。中繼節點和出口節點則會定期更換。節點所在國家的資料來自 Tor 內建的 IPFire Location 資料庫（CC BY-SA 4.0）。</string>
+    <string name="tor_startup_progress">正在連線到 Tor 網路… %1$d%%</string>
+</resources>

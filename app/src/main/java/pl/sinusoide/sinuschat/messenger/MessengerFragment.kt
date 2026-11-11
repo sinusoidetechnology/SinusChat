@@ -854,8 +854,8 @@ class MessengerFragment : Fragment() {
         val items = mutableListOf(
             Item(R.drawable.ic_pin, getString(if (pinned) R.string.unpin else R.string.pin), false) { togglePin(conv) },
             Item(R.drawable.ic_notifications_off, getString(R.string.mute_notifications), false) { showMuteOptions(conv) },
-            Item(R.drawable.ic_check_double, getString(R.string.mark_as_read), false) { markRead(conv) },
         )
+        if (conv.unreadCount > 0) items += Item(R.drawable.ic_check_double, getString(R.string.mark_as_read), false) { markRead(conv) }
         if (!isGroup && conv.otherUserHash.isNotEmpty()) {
             items += Item(R.drawable.ic_edit, getString(R.string.local_name_action), false) {
                 LocalNameSheet.show(activity, conv.otherUserHash, conv.otherUserName) { if (isAdded) loadConversations() }

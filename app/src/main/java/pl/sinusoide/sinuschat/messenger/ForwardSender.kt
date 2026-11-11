@@ -160,7 +160,8 @@ object ForwardSender {
                 }
                 is Item.Voice -> {
                     val file = voiceFile(ctx, item) ?: return ctx.getString(R.string.forward_fail_voice)
-                    val (url, voiceKey) = FileUploader.uploadVoiceBlocking(ctx, file)
+                    val (url, voiceKey) = FileUploader.uploadVoiceBlocking(ctx, file,
+                        if (t.isGroup) 50 else FileUploader.VOICE_DOWNLOADS)
                         ?: return ctx.getString(R.string.forward_fail_upload)
                     val id = UUID.randomUUID().toString()
                     try { file.copyTo(MediaManager.voiceCacheFile(ctx, id), overwrite = true) } catch (_: Exception) {}
@@ -273,43 +274,12 @@ object ForwardSender {
         return cleanImage(item.copy(uri = Uri.fromFile(out), size = out.length()), out)
     }
 
-    private val PRIVATE_TAGS = listOf(
-        ExifInterface.TAG_GPS_VERSION_ID, ExifInterface.TAG_GPS_LATITUDE_REF, ExifInterface.TAG_GPS_LATITUDE,
-        ExifInterface.TAG_GPS_LONGITUDE_REF, ExifInterface.TAG_GPS_LONGITUDE, ExifInterface.TAG_GPS_ALTITUDE_REF,
-        ExifInterface.TAG_GPS_ALTITUDE, ExifInterface.TAG_GPS_TIMESTAMP, ExifInterface.TAG_GPS_DATESTAMP,
-        ExifInterface.TAG_GPS_PROCESSING_METHOD, ExifInterface.TAG_GPS_AREA_INFORMATION,
-        ExifInterface.TAG_GPS_SPEED_REF, ExifInterface.TAG_GPS_SPEED, ExifInterface.TAG_GPS_TRACK_REF,
-        ExifInterface.TAG_GPS_TRACK, ExifInterface.TAG_GPS_IMG_DIRECTION_REF, ExifInterface.TAG_GPS_IMG_DIRECTION,
-        ExifInterface.TAG_GPS_DEST_LATITUDE_REF, ExifInterface.TAG_GPS_DEST_LATITUDE,
-        ExifInterface.TAG_GPS_DEST_LONGITUDE_REF, ExifInterface.TAG_GPS_DEST_LONGITUDE,
-        ExifInterface.TAG_GPS_DEST_BEARING_REF, ExifInterface.TAG_GPS_DEST_BEARING,
-        ExifInterface.TAG_GPS_DEST_DISTANCE_REF, ExifInterface.TAG_GPS_DEST_DISTANCE,
-        ExifInterface.TAG_GPS_H_POSITIONING_ERROR, ExifInterface.TAG_GPS_SATELLITES, ExifInterface.TAG_GPS_STATUS,
-        ExifInterface.TAG_GPS_MEASURE_MODE, ExifInterface.TAG_GPS_DOP, ExifInterface.TAG_GPS_MAP_DATUM,
-        ExifInterface.TAG_GPS_DIFFERENTIAL,
-        ExifInterface.TAG_MAKE, ExifInterface.TAG_MODEL, ExifInterface.TAG_SOFTWARE, ExifInterface.TAG_ARTIST,
-        ExifInterface.TAG_DATETIME, ExifInterface.TAG_DATETIME_ORIGINAL, ExifInterface.TAG_DATETIME_DIGITIZED,
-        ExifInterface.TAG_OFFSET_TIME, ExifInterface.TAG_OFFSET_TIME_ORIGINAL, ExifInterface.TAG_OFFSET_TIME_DIGITIZED,
-        ExifInterface.TAG_SUBSEC_TIME, ExifInterface.TAG_SUBSEC_TIME_ORIGINAL, ExifInterface.TAG_SUBSEC_TIME_DIGITIZED,
-        ExifInterface.TAG_BODY_SERIAL_NUMBER, ExifInterface.TAG_CAMERA_OWNER_NAME, ExifInterface.TAG_LENS_MAKE,
-        ExifInterface.TAG_LENS_MODEL, ExifInterface.TAG_LENS_SERIAL_NUMBER, ExifInterface.TAG_IMAGE_UNIQUE_ID,
-        ExifInterface.TAG_USER_COMMENT, ExifInterface.TAG_IMAGE_DESCRIPTION, ExifInterface.TAG_MAKER_NOTE,
-        ExifInterface.TAG_XMP
-    )
-
     private fun cleanImage(item: Item.Media, file: File): Item.Media {
         val mime = item.mime.lowercase()
         return try {
             when (mime) {
-                "image/jpeg", "image/jpg", "image/png", "image/webp" -> {
-                    val exif = ExifInterface(file.absolutePath)
-                    val present = PRIVATE_TAGS.filter { exif.getAttribute(it) != null }
-                    if (present.isNotEmpty()) {
-                        present.forEach { exif.setAttribute(it, null) }
-                        exif.saveAttributes()
-                    }
-                    item
-                }
+                "image/jpeg", "image/jpg", "image/png", "image/webp" ->
+                    if (pl.sinusoide.sinuschat.util.ImagePrep.scrubInPlace(file)) item else toJpeg(item, file) ?: item
                 "image/heic", "image/heif" -> toJpeg(item, file) ?: item
                 else -> item
             }

@@ -114,6 +114,8 @@ class GroupCallActivity : AppCompatActivity() {
     private lateinit var btnCam: CallButtonView
     private lateinit var btnScreen: CallButtonView
     private lateinit var btnSpk: CallButtonView
+    private lateinit var spkLabel: TextView
+    private lateinit var routeBar: AudioRouteBar
     private lateinit var flipColumn: View
     private lateinit var endButton: CallButtonView
     private var compactCall = false
@@ -445,7 +447,7 @@ class GroupCallActivity : AppCompatActivity() {
         focusContainer = FrameLayout(this).apply {
             setBackgroundColor(Color.BLACK)
             visibility = View.GONE
-            setOnClickListener { setUiHidden(!uiHidden) }
+            setOnClickListener { if (routeBar.open) hideRouteBar() else setUiHidden(!uiHidden) }
         }
         focusHost = FrameLayout(this)
         focusContainer.addView(focusHost, FrameLayout.LayoutParams(-1, -1))
@@ -576,6 +578,7 @@ class GroupCallActivity : AppCompatActivity() {
     private fun applyChrome(overVideo: Boolean) {
         val pal = if (overVideo) videoPalette else palette
         glassButtons.forEach { it.palette = pal }
+        routeBar.palette = pal
         endButton.palette = pal
         tvName.setTextColor(pal.text)
         if (pal.dark) tvName.setShadowLayer(8f, 0f, 2f, 0x66000000) else tvName.setShadowLayer(0f, 0f, 0f, 0)
@@ -687,8 +690,19 @@ class GroupCallActivity : AppCompatActivity() {
         }
         flipColumn = buttonColumn(btnFlip, getString(R.string.call_btn_flip)).apply { visibility = View.GONE }
         panelRow.addView(flipColumn, LinearLayout.LayoutParams(0, -2, 1f))
-        btnSpk = CallButtonView(this, R.drawable.ic_call_speaker_off, palette = palette).apply { setOnClickListener { session?.toggleSpeaker() } }
-        panelRow.addView(buttonColumn(btnSpk, getString(R.string.call_btn_speaker)), LinearLayout.LayoutParams(0, -2, 1f))
+        btnSpk = CallButtonView(this, R.drawable.ic_normal_call, palette = palette).apply { setOnClickListener { onSpeakerTap() } }
+        val spkColumn = buttonColumn(btnSpk, getString(R.string.call_btn_speaker))
+        spkLabel = spkColumn.getChildAt(1) as TextView
+        panelRow.addView(spkColumn, LinearLayout.LayoutParams(0, -2, 1f))
+
+        routeBar = AudioRouteBar(this, palette) { r ->
+            session?.selectRoute(r)
+            hideRouteBar()
+        }
+        controls.addView(routeBar, LinearLayout.LayoutParams(-1, -2).apply {
+            marginStart = (16 * dp).toInt(); marginEnd = (16 * dp).toInt()
+            bottomMargin = (10 * dp).toInt()
+        })
 
         controls.addView(panel, LinearLayout.LayoutParams(-1, -2).apply {
             marginStart = (16 * dp).toInt(); marginEnd = (16 * dp).toInt()
@@ -880,8 +894,30 @@ class GroupCallActivity : AppCompatActivity() {
         btnCam.active = camOffMarked
         btnScreen.active = s.sharing
         flipColumn.visibility = if (s.cameraOn && !s.sharing) View.VISIBLE else View.GONE
-        btnSpk.setIcon(if (s.speakerOn) R.drawable.ic_call_speaker_on else R.drawable.ic_call_speaker_off)
-        btnSpk.active = s.speakerOn
+        val audio = s.audio
+        btnSpk.setIcon(CallAudio.icon(audio.route))
+        btnSpk.active = audio.speakerOn
+        btnSpk.arrow = audio.hasBluetooth
+        spkLabel.text = if (audio.hasBluetooth) audio.label(this) else getString(R.string.call_btn_speaker)
+        btnSpk.contentDescription = spkLabel.text
+        routeBar.bind(audio)
+        if (!audio.hasBluetooth) hideRouteBar()
+    }
+
+    private fun onSpeakerTap() {
+        val s = session ?: return
+        if (!s.audio.hasBluetooth) { s.toggleSpeaker(); return }
+        if (routeBar.open) hideRouteBar()
+        else {
+            routeBar.bind(s.audio)
+            routeBar.show()
+            btnSpk.arrowOpen = true
+        }
+    }
+
+    private fun hideRouteBar() {
+        routeBar.hide()
+        btnSpk.arrowOpen = false
     }
 
     private fun trackPriority(s: GroupCallSession, others: List<String>) {

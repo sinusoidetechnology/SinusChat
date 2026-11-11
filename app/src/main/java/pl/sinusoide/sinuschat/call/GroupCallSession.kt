@@ -106,8 +106,11 @@ class GroupCallSession private constructor(
         private set
     var micOn = true
         private set
-    var speakerOn = isVideo
-        private set
+    val audio = CallAudio(app) {
+        OngoingCallService.setAudio(app, micOn, speakerOn)
+        changed()
+    }
+    val speakerOn: Boolean get() = audio.speakerOn
     var cameraOn = isVideo
         private set
     var frontCamera = true
@@ -621,14 +624,14 @@ class GroupCallSession private constructor(
         changed()
     }
 
-    fun toggleSpeaker() = setSpeaker(!speakerOn)
-
-    fun setSpeaker(on: Boolean) {
+    fun toggleSpeaker() {
         noteActivity()
-        speakerOn = on
-        app.getSystemService(android.media.AudioManager::class.java)?.let { routeSpeaker(it, speakerOn) }
-        OngoingCallService.setAudio(app, micOn, speakerOn)
-        changed()
+        audio.toggleSpeaker()
+    }
+
+    fun selectRoute(route: CallAudio.Route) {
+        noteActivity()
+        audio.select(route)
     }
 
     fun toggleCamera() {
@@ -649,7 +652,8 @@ class GroupCallSession private constructor(
         localVideo?.setEnabled(true)
         attachVideoToPeers()
         broadcastMedia()
-        if (!speakerOn) setSpeaker(true) else changed()
+        audio.preferSpeaker()
+        changed()
     }
 
     fun startScreenShare(data: android.content.Intent): Boolean {
@@ -678,7 +682,8 @@ class GroupCallSession private constructor(
             peers.values.forEach { tuneVideoSender(it.videoSender) }
             attachVideoToPeers()
             broadcastMedia()
-            if (!speakerOn) setSpeaker(true) else changed()
+            audio.preferSpeaker()
+            changed()
             true
         } catch (e: Exception) {
             Log.w(TAG, "screen: ${e.message}")
@@ -765,32 +770,20 @@ class GroupCallSession private constructor(
         focus = request
         am.mode = android.media.AudioManager.MODE_IN_COMMUNICATION
         audioSession = true
-        routeSpeaker(am, speakerOn)
+        audio.start(isVideo)
     }
 
     private fun endAudio() {
         if (!audioSession) return
         audioSession = false
+        audio.stop()
         val am = app.getSystemService(android.media.AudioManager::class.java) ?: return
         try {
-            routeSpeaker(am, false)
             am.mode = if (savedMode == android.media.AudioManager.MODE_IN_COMMUNICATION)
                 android.media.AudioManager.MODE_NORMAL else savedMode
             focus?.let { am.abandonAudioFocusRequest(it) }
         } catch (_: Exception) {}
         focus = null
-    }
-
-    private fun routeSpeaker(am: android.media.AudioManager, on: Boolean) {
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-            if (on) am.availableCommunicationDevices
-                .firstOrNull { it.type == android.media.AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
-                ?.let { am.setCommunicationDevice(it) }
-            else am.clearCommunicationDevice()
-        } else {
-            @Suppress("DEPRECATION")
-            am.isSpeakerphoneOn = on
-        }
     }
 
     private open class SdpAdapter : SdpObserver {

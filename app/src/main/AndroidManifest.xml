@@ -4,6 +4,11 @@
 
     <uses-sdk tools:overrideLibrary="com.duckduckgo.translatekit" />
 
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
+    <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
+    <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
@@ -65,6 +70,9 @@
         <meta-data
             android:name="firebase_analytics_collection_deactivated"
             android:value="true" />
+        <meta-data
+            android:name="delivery_metrics_exported_to_big_query_enabled"
+            android:value="false" />
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_icon"
             android:resource="@drawable/ic_stat_name" />
@@ -177,6 +185,11 @@
             android:exported="false" />
 
         <service
+            android:name=".pclink.PcLinkService"
+            android:exported="false"
+            android:foregroundServiceType="remoteMessaging" />
+
+        <service
             android:name=".call.OngoingCallService"
             android:exported="false"
             android:foregroundServiceType="microphone|mediaProjection" />
@@ -272,6 +285,19 @@
 
         <receiver
             android:name=".call.CallActionReceiver"
+            android:exported="false" />
+
+        <activity
+            android:name=".pclink.ProximitySetupActivity"
+            android:theme="@style/Theme.SinusChat"
+            android:launchMode="singleTop"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode|density"
+            android:exported="false" />
+
+        <activity
+            android:name=".TermsUpdateActivity"
+            android:theme="@style/Theme.SinusChat"
+            android:launchMode="singleTop"
             android:exported="false" />
 
         <activity

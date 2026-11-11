@@ -35,6 +35,7 @@ class MessageListenerService : Service() {
         const val TAG = "MsgListener"
         private const val RETRY_FIELD = "_retry"
         private const val MAX_RETRIES = 4
+        private const val SEEN_FRAMES_MAX = 1000
         const val FG_CHANNEL_ID  = "sinuschat_fg_listener"
         const val FG_NOTIF_ID    = 9001
         const val ACTION_POLL_NOW = "pl.sinusoide.sinuschat.POLL_NOW"
@@ -43,6 +44,10 @@ class MessageListenerService : Service() {
         private const val EXTRA_NO_FG = "no_fg"
         const val POLL_INTERVAL_MS = 45_000L
         const val FAST_POLL_MS     = 7_000L
+        private const val BG_POLL_MS       = 15 * 60_000L
+        private const val KEEPALIVE_MS     = 4 * 60_000L
+        private const val RX_WAKE_MS       = 10_000L
+        private const val KEEPALIVE_WAKE_MS = 20_000L
         const val TTL_SWEEP_MS     = 5 * 60 * 1000L
 
         private const val FCM_LINGER_MS    = 6_000L
@@ -169,7 +174,11 @@ class MessageListenerService : Service() {
 
     private val pollRunnable = object : Runnable {
         override fun run() {
-            pollPendingMessages()
+            val idle = !pl.sinusoide.sinuschat.SinusApp.isForeground && WebSocketManager.isConnected()
+            if (!idle || android.os.SystemClock.elapsedRealtime() - lastPollMs >= BG_POLL_MS) {
+                lastPollMs = android.os.SystemClock.elapsedRealtime()
+                pollPendingMessages()
+            }
             val next = if (currentlyOpenConversationId != null) FAST_POLL_MS else POLL_INTERVAL_MS
             mainHandler.postDelayed(this, next)
         }
@@ -188,6 +197,18 @@ class MessageListenerService : Service() {
     }
 
     private var wakeLock: android.os.PowerManager.WakeLock? = null
+    private var rxLock: android.os.PowerManager.WakeLock? = null
+    @Volatile private var lastPollMs = 0L
+
+    private fun briefWake(ms: Long) {
+        try {
+            val wl = rxLock ?: getSystemService(android.os.PowerManager::class.java)
+                .newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "sinuschat:rx")
+                .apply { setReferenceCounted(false) }
+                .also { rxLock = it }
+            wl.acquire(ms)
+        } catch (_: Exception) {}
+    }
 
     private var inForeground = false
     private var lastStartId = 0
@@ -199,6 +220,9 @@ class MessageListenerService : Service() {
     private val pollsInFlight = java.util.concurrent.atomic.AtomicInteger()
 
     private val inbox = java.util.concurrent.Executors.newSingleThreadExecutor()
+    private val seenFrames = object : LinkedHashMap<String, Long>(256, 0.75f, false) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Long>?) = size > SEEN_FRAMES_MAX
+    }
 
     private val idleCheck = object : Runnable {
         override fun run() {
@@ -215,6 +239,7 @@ class MessageListenerService : Service() {
                 pl.sinusoide.sinuschat.call.CallActivity.activeConversationId != null ||
                 pl.sinusoide.sinuschat.call.GroupCallSession.current != null ||
                 pl.sinusoide.sinuschat.call.WalkieTalkie.session != null ||
+                pl.sinusoide.sinuschat.pclink.PcLinkServer.connectedCount() > 0 ||
                 now < ringHoldUntil ||
                 pollsInFlight.get() > 0 ||
                 now - lastWakeMs < FCM_LINGER_MS ||
@@ -317,7 +342,8 @@ class MessageListenerService : Service() {
             mainHandler.postDelayed(idleCheck, IDLE_CHECK_MS)
         } else {
             if (!inForeground) goForeground()
-            acquireWakeLock()
+            releaseWakeLock()
+            scheduleWatchdog()
         }
     }
 
@@ -362,8 +388,14 @@ class MessageListenerService : Service() {
         }
 
         if (intent?.action == ACTION_POLL_NOW && myPhoneHash.isNotEmpty()) {
-            if (!WebSocketManager.isConnected()) WebSocketManager.connect(this)
-            pollPendingMessages()
+            briefWake(KEEPALIVE_WAKE_MS)
+            scheduleWatchdog()
+            val live = WebSocketManager.isConnected()
+            if (!live) WebSocketManager.connect(this) else WebSocketManager.keepAlive()
+            if (!live || android.os.SystemClock.elapsedRealtime() - lastPollMs >= BG_POLL_MS) {
+                lastPollMs = android.os.SystemClock.elapsedRealtime()
+                pollPendingMessages()
+            }
             MessageRepository.retryPendingOutgoing(this, myPhoneHash)
             mainHandler.removeCallbacks(pollRunnable)
             val next = if (currentlyOpenConversationId != null) FAST_POLL_MS else POLL_INTERVAL_MS
@@ -401,7 +433,7 @@ class MessageListenerService : Service() {
             val i = Intent(applicationContext, MessageListenerService::class.java)
                 .setAction(ACTION_POLL_NOW)
             scheduleWake(servicePendingIntent(43, i,
-                android.app.PendingIntent.FLAG_UPDATE_CURRENT), 15 * 60_000L)
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT), KEEPALIVE_MS)
         } catch (e: Exception) { Log.w(TAG, "watchdog: ${e.message}") }
     }
 
@@ -529,6 +561,8 @@ class MessageListenerService : Service() {
             val sender = verifiedSender(json, payload, kind, convId) ?: return
             if (sender == myPhoneHash) return
             if (pl.sinusoide.sinuschat.util.BlockList.isBlocked(this, sender)) return
+            if (json.optBoolean("sealed", false) && GroupRepository.isGroup(convId) &&
+                !GroupGuard.allows(this, convId, sender, kind)) return
 
             val entity: MessageEntity = when {
                 kind == "group_attach" -> MessageEntity(
@@ -565,9 +599,14 @@ class MessageListenerService : Service() {
     }
 
     private fun handleIncoming(frame: JSONObject) {
+        briefWake(RX_WAKE_MS)
         lastWakeMs = android.os.SystemClock.elapsedRealtime()
         val json = if (frame.optString("kind") == "sealed" || frame.optString("type") == "sealed") {
             val eph = frame.optBoolean("eph", false)
+            if (isRepeatedFrame(frame)) {
+                frame.optString("id").takeIf { it.isNotEmpty() }?.let { queueSealedAck(it) }
+                return
+            }
             val opened = pl.sinusoide.sinuschat.crypto.SealedSender.unseal(this, frame)
             if (opened == null && !eph && E2EManager.myPrivateKeyBytes(this) == null) {
                 val tries = frame.optInt(RETRY_FIELD, 0)
@@ -582,10 +621,16 @@ class MessageListenerService : Service() {
             if (!eph) frame.optString("id").takeIf { it.isNotEmpty() }?.let { queueSealedAck(it) }
             opened ?: run {
                 Log.w(TAG, "Koperty nie da się otworzyć — pominięta")
+                if (!eph) pl.sinusoide.sinuschat.util.LinkLog.add(this, "drop", "koperta ${frame.optString("id").take(10)}")
                 return
             }
         } else frame
         val sealedKind = json.optString("kind")
+        val sealedGroup = json.optBoolean("sealed", false) && GroupRepository.isGroup(json.optString("conversationId"))
+        if (sealedGroup && sealedKind !in GroupRepository.SEALED_GROUP_KINDS) {
+            if (sealedKind != "typing" && sealedKind != "typing_stop") pl.sinusoide.sinuschat.util.LinkLog.addThrottled(this, "drop", "koperta grupowa $sealedKind")
+            return
+        }
         if (json.optBoolean("sealed", false) && (sealedKind == "typing" || sealedKind == "typing_stop")) {
             val conv = json.optString("conversationId")
             val from = json.optString("senderHash")
@@ -602,6 +647,7 @@ class MessageListenerService : Service() {
         if (!dbWritable()) {
             if (!handleWhileDbLocked(json)) return
         }
+        if (json === frame && isRepeatedFrame(frame)) return
         when (json.optString("type")) {
             "group_created" -> {
                 val gid = json.optString("groupId")
@@ -625,6 +671,7 @@ class MessageListenerService : Service() {
             "group_member_added", "group_member_left", "group_member_removed",
             "group_updated", "group_admin_changed" -> {
                 val gid = json.optString("groupId")
+                GroupGuard.forget(gid)
                 val sys = pl.sinusoide.sinuschat.util.GroupSystemMessages
                 when (json.optString("type")) {
                     "group_member_added" -> {
@@ -682,7 +729,8 @@ class MessageListenerService : Service() {
             android.util.Log.d("CallFlow", "call_offer: conv=${convId.take(8)} from=${fromHash.take(8)} sdpLen=${offerSDP.length} keys=${json.keys().asSequence().joinToString()}")
             if (convId.isNotEmpty() && fromHash.isNotEmpty()) {
                 if (pl.sinusoide.sinuschat.call.CallActivity.activeConversationId == convId) return
-                if (pl.sinusoide.sinuschat.call.GroupCallSession.current?.ended == false) {
+                if (pl.sinusoide.sinuschat.call.GroupCallSession.current?.ended == false ||
+                    pl.sinusoide.sinuschat.pclink.PcLinkCalls.busy()) {
                     val busyName = pl.sinusoide.sinuschat.util.ContactCache.getName(this, fromHash) ?: getString(R.string.caller_unknown)
                     WebSocketManager.send(org.json.JSONObject().put("type", "call_reject")
                         .put("conversationId", convId).put("reason", "busy"))
@@ -714,6 +762,7 @@ class MessageListenerService : Service() {
                         this, convId, fromHash, fromName, isVideo, offerSDP
                     )
                 }
+                pl.sinusoide.sinuschat.pclink.PcLinkCalls.onIncoming(this, convId, fromHash, fromName, isVideo, offerSDP)
             }
             return
         }
@@ -726,6 +775,7 @@ class MessageListenerService : Service() {
                     ?.let { pl.sinusoide.sinuschat.util.BlockList.markDeleted(this, it) }
             }
             ringHoldUntil = 0L
+            pl.sinusoide.sinuschat.pclink.PcLinkCalls.onRingStopped(convId, pl.sinusoide.sinuschat.link.LinkFrame.CALL_PEER_HUNG_UP)
             AppExecutor.main {
                 pl.sinusoide.sinuschat.call.CallNotifier.callerHungUp(this, convId)
                 pl.sinusoide.sinuschat.call.CallNotifier.cancel(this)
@@ -779,11 +829,16 @@ class MessageListenerService : Service() {
             try {
                 val bytes = Base64.decode(payloadB64, Base64.NO_WRAP)
                 JSONObject(String(bytes, Charsets.UTF_8))
-            } catch (e: Exception) { Log.e(TAG, "payloadB64 decode fail", e); return }
+            } catch (e: Exception) {
+                Log.e(TAG, "payloadB64 decode fail", e)
+                pl.sinusoide.sinuschat.util.LinkLog.add(this, "drop", "$kind payload ${msgId.take(10)}")
+                return
+            }
         } else json
 
         val sender = verifiedSender(json, payload, kind, convId) ?: run {
             Log.w(TAG, "Odrzucono ramkę „$kind\" — nadawca się nie zgadza")
+            pl.sinusoide.sinuschat.util.LinkLog.add(this, "drop", "$kind nadawca ${msgId.take(10)}")
             return
         }
 
@@ -794,8 +849,15 @@ class MessageListenerService : Service() {
 
         pollsInFlight.incrementAndGet()
         val task = Runnable {
-            try { processPayload(convId, msgId, kind, sender, payload, createdAt) }
-            catch (e: Throwable) { Log.e(TAG, "processPayload: ${e.message}") }
+            try {
+                if (sealedGroup && !GroupGuard.allows(this, convId, sender, kind))
+                    pl.sinusoide.sinuschat.util.LinkLog.addThrottled(this, "drop", "koperta grupowa spoza grupy")
+                else processPayload(convId, msgId, kind, sender, payload, createdAt)
+            }
+            catch (e: Throwable) {
+                Log.e(TAG, "processPayload: ${e.message}")
+                pl.sinusoide.sinuschat.util.LinkLog.add(this, "drop", "$kind ${e.javaClass.simpleName} ${msgId.take(10)}")
+            }
             finally { pollsInFlight.decrementAndGet() }
         }
         try { inbox.execute(task) } catch (_: java.util.concurrent.RejectedExecutionException) { AppExecutor.io { task.run() } }
@@ -841,6 +903,7 @@ class MessageListenerService : Service() {
 
         if (isNewChatBlocked(convId, senderHash)) {
             Log.d(TAG, "Pominięto ${kind} od nowej osoby — blokada nowych rozmów")
+            if (kind == "msg" || kind == "group_attach") pl.sinusoide.sinuschat.util.LinkLog.add(this, "drop", "$kind nowa rozmowa zablokowana")
             return
         }
 
@@ -1083,11 +1146,13 @@ class MessageListenerService : Service() {
                 ViewOnceManager.markOpenedLocally(this, convId, targetId)
             }
             "screenshot_attempt" -> {
+                val duringCall = payload.optString("during") == "call"
+                if (duringCall) pl.sinusoide.sinuschat.call.CallActivity.peerScreenshot(convId)
                 val entity = MessageEntity(
                     id = "${msgId}_sys",
                     conversationId = convId,
                     senderHash = "",
-                    text = getString(R.string.peer_screenshot_attempt),
+                    text = getString(if (duringCall) R.string.peer_screenshot_attempt_call else R.string.peer_screenshot_attempt),
                     timestampMs = createdAt,
                     type = "sys_screenshot",
                     isSystemMessage = true,
@@ -1353,6 +1418,7 @@ class MessageListenerService : Service() {
         val frame = JSONObject()
             .put("type", "message").put("kind", kind).put("senderHash", senderHash)
             .put("conversationId", convId).put("id", msgId).put("createdAt", createdAt).put("sealed", true)
+            .put(RETRY_FIELD, tries + 1)
             .put("payloadB64", Base64.encodeToString(payload.toString().toByteArray(Charsets.UTF_8), Base64.NO_WRAP))
         pl.sinusoide.sinuschat.util.LinkLog.add(this, "decrypt", "klucze chwilowo niedostępne, próba ${tries + 1}")
         pl.sinusoide.sinuschat.util.LockedInbox.add(this, frame.toString())
@@ -1450,7 +1516,11 @@ class MessageListenerService : Service() {
                 for (raw in pl.sinusoide.sinuschat.util.LockedInbox.drain(this)) {
                     try { handleIncoming(JSONObject(raw)) } catch (_: Exception) {}
                 }
-                val arr = ApiClient.getArray("/api/messages/pending", this) ?: return@io
+                val arr = ApiClient.getArray("/api/messages/pending?confirm=1", this) ?: run {
+                    pl.sinusoide.sinuschat.util.LinkLog.addThrottled(this, "pending", "pobranie kolejki nieudane")
+                    return@io
+                }
+                confirmPending(arr)
                 for (i in 0 until arr.length()) {
                     val item = arr.getJSONObject(i)
                     handleIncoming(item)
@@ -1462,6 +1532,30 @@ class MessageListenerService : Service() {
                 pollsInFlight.decrementAndGet()
             }
         }
+    }
+
+    private fun confirmPending(arr: org.json.JSONArray) {
+        val ids = org.json.JSONArray()
+        for (i in 0 until arr.length()) arr.optJSONObject(i)?.optString("id")?.takeIf { it.isNotEmpty() }?.let { ids.put(it) }
+        if (ids.length() == 0) return
+        if (ApiClient.post("/api/messages/received", JSONObject().put("ids", ids), this) == null)
+            pl.sinusoide.sinuschat.util.LinkLog.addThrottled(this, "pending", "potwierdzenie kolejki nieudane (${ids.length()})")
+    }
+
+    private fun isRepeatedFrame(frame: JSONObject): Boolean {
+        val type = frame.optString("type")
+        if (type != "message" && !(type.isEmpty() && frame.has("payloadB64"))) return false
+        if (frame.optBoolean("eph", false) || frame.has(RETRY_FIELD)) return false
+        val id = frame.optString("id").ifEmpty { return false }.removeSuffix("_" + myPhoneHash.take(16))
+        val key = frame.optString("conversationId") + "|" + id
+        synchronized(seenFrames) {
+            if (seenFrames.containsKey(key)) {
+                Log.d(TAG, "Powtórzona ramka ${id.take(10)} — pomijam")
+                return true
+            }
+            seenFrames[key] = System.currentTimeMillis()
+        }
+        return false
     }
 
     private fun applyConversationAcks() {

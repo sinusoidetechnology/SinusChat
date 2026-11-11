@@ -41,13 +41,17 @@ class SetupActivity : AppCompatActivity() {
         private const val KEY_TERMS_VERSION = "terms_version"
         private const val KEY_TERMS_AT = "terms_accepted_at"
 
-        fun termsAccepted(context: Context): Boolean =
-            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                .getString(KEY_TERMS_VERSION, null) == TERMS_VERSION
+        fun acceptedTermsVersion(context: Context): String? =
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_TERMS_VERSION, null)
+
+        fun termsAccepted(context: Context): Boolean {
+            val accepted = acceptedTermsVersion(context) ?: return false
+            return accepted >= pl.sinusoide.sinuschat.util.TermsGate.newest(context)
+        }
 
         fun acceptTerms(context: Context) {
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-                .putString(KEY_TERMS_VERSION, TERMS_VERSION)
+                .putString(KEY_TERMS_VERSION, pl.sinusoide.sinuschat.util.TermsGate.newest(context))
                 .putLong(KEY_TERMS_AT, System.currentTimeMillis())
                 .apply()
         }

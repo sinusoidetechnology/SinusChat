@@ -161,6 +161,10 @@ interface MessageDao {
     @Query("SELECT * FROM messages WHERE conversationId = :conversationId ORDER BY timestampMs DESC LIMIT :limit")
     fun getLatest(conversationId: String, limit: Int): List<MessageEntity>
 
+    @Query("SELECT * FROM messages WHERE conversationId = :conversationId AND pinned = 1 AND isSystemMessage = 0 " +
+           "ORDER BY timestampMs DESC LIMIT :limit")
+    fun getPinned(conversationId: String, limit: Int): List<MessageEntity>
+
     @Query("SELECT * FROM messages WHERE conversationId = :conversationId AND timestampMs < :before " +
            "ORDER BY timestampMs DESC LIMIT :limit")
     fun getBefore(conversationId: String, before: Long, limit: Int): List<MessageEntity>

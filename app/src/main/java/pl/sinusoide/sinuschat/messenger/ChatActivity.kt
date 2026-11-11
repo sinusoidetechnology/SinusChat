@@ -696,19 +696,7 @@ open class ChatActivity : AppCompatActivity() {
             return
         }
         GroupRepository.merge(payloadJson, sealed)
-        val payloadB64 = android.util.Base64.encodeToString(
-            payloadJson.toString().toByteArray(Charsets.UTF_8),
-            android.util.Base64.NO_WRAP
-        )
-
-        val body = org.json.JSONObject().apply {
-            put("conversationId", conversationId)
-            put("messageId", msgId)
-            put("kind", "msg")
-            put("payloadB64", payloadB64)
-        }
-
-        val result = ApiClient.post("/api/message", body, this)
+        val result = GroupRepository.postGroupEvent(this, conversationId, msgId, "msg", payloadJson)
         MessageRepository.release(msgId)
         if (result == null) MessageRepository.scheduleRetry(this, myPhoneHash)
         val sentTs = GroupRepository.serverTime(result)
@@ -1430,6 +1418,7 @@ open class ChatActivity : AppCompatActivity() {
                 val online = user.optBoolean("is_online", false)
                 updateOtherStatusUI(heartbeatMs, lastSeenMs, online)
                 otherChatPrivacyMode = privacyOn
+                pl.sinusoide.sinuschat.util.CaptureGuard.savePeerBlocks(this, otherUserHash, privacyOn)
                 if (isOnline) applyOtherPrivacyMode(privacyOn)
             }
 
@@ -1446,26 +1435,6 @@ open class ChatActivity : AppCompatActivity() {
     }
 
     private fun fetchRealName() = loadOtherUserProfile()
-
-    private fun formatLastSeen(ms: Long): String {
-        if (ms == 0L) return ""
-        return getString(R.string.last_seen_prefix) + " " + relativeTimeAgo(ms)
-    }
-
-    private fun relativeTimeAgo(ms: Long): String {
-        val diff = pl.sinusoide.sinuschat.util.ServerTime.ageMs(ms)
-        if (diff < 60_000) return getString(R.string.just_now)
-        val minutes = (diff / 60_000).toInt()
-        if (minutes < 60) return resources.getQuantityString(R.plurals.minutes_ago, minutes, minutes)
-        val hours = (diff / 3_600_000).toInt()
-        if (hours < 24) return resources.getQuantityString(R.plurals.hours_ago, hours, hours)
-        val days = (diff / 86_400_000L).toInt()
-        if (days < 30) return resources.getQuantityString(R.plurals.days_ago, days, days)
-        val months = (days / 30)
-        if (months < 12) return resources.getQuantityString(R.plurals.months_ago, months, months)
-        val years = (days / 365).coerceAtLeast(1)
-        return resources.getQuantityString(R.plurals.years_ago, years, years)
-    }
 
     private fun onNetworkChanged(online: Boolean) {
         if (online) {
@@ -1506,7 +1475,7 @@ open class ChatActivity : AppCompatActivity() {
         } else {
             val bestMs = maxOf(lastSeenMs, heartbeatMs)
             if (bestMs > 0) {
-                toolbarStatus.text = formatLastSeen(bestMs)
+                pl.sinusoide.sinuschat.util.LastSeenText.show(toolbarStatus, bestMs)
                 toolbarStatus.setTextColor(Color.parseColor("#9B9B9B"))
                 toolbarStatus.visibility = View.VISIBLE
             } else {
@@ -3589,7 +3558,8 @@ open class ChatActivity : AppCompatActivity() {
     private data class StagedAttachment(
         val uri: Uri,
         val kind: StagedKind,
-        var viewOnce: Boolean = false
+        var viewOnce: Boolean = false,
+        var original: Boolean = false
     )
     private val stagedAttachments = mutableListOf<StagedAttachment>()
 
@@ -3653,13 +3623,12 @@ open class ChatActivity : AppCompatActivity() {
             })
             cell.addView(lockOverlay)
 
-            if (item.kind == StagedKind.VIDEO && !item.viewOnce) {
-                cell.addView(ImageView(this).apply {
-                    setImageResource(R.drawable.ic_call_video_on)
-                    setColorFilter(0xFFFFFFFF.toInt())
-                    layoutParams = FrameLayout.LayoutParams((22*dp).toInt(), (22*dp).toInt(), Gravity.CENTER)
-                })
-            }
+            val videoBadge = if (item.kind == StagedKind.VIDEO) ImageView(this).apply {
+                setImageResource(R.drawable.ic_call_video_on)
+                setColorFilter(0xFFFFFFFF.toInt())
+                layoutParams = FrameLayout.LayoutParams((22*dp).toInt(), (22*dp).toInt(), Gravity.CENTER)
+                visibility = if (item.viewOnce) View.GONE else View.VISIBLE
+            }.also { cell.addView(it) } else null
 
             val x = (22 * dp).toInt()
             cell.addView(ImageView(this).apply {
@@ -3673,6 +3642,35 @@ open class ChatActivity : AppCompatActivity() {
                 isClickable = true
                 setOnClickListener { removeStagedAttachment(item) }
             })
+
+            if (item.kind == StagedKind.IMAGE || item.kind == StagedKind.VIDEO) {
+                val hd = (24 * dp).toInt()
+                cell.addView(ImageView(this).apply {
+                    setImageResource(R.drawable.ic_hd)
+                    setPadding((3*dp).toInt(), (3*dp).toInt(), (3*dp).toInt(), (3*dp).toInt())
+                    layoutParams = FrameLayout.LayoutParams(hd, hd, Gravity.TOP or Gravity.START).apply {
+                        topMargin = (2*dp).toInt(); marginStart = (2*dp).toInt()
+                    }
+                    contentDescription = getString(R.string.original_quality)
+                    isClickable = true
+                    fun paint() {
+                        val ctx = this@ChatActivity
+                        background = if (item.original)
+                            pl.sinusoide.sinuschat.ui.ThemeUi.rounded(ctx, pl.sinusoide.sinuschat.ui.ThemeUi.accent(ctx), 12f)
+                        else ContextCompat.getDrawable(ctx, R.drawable.bg_circle_dark)
+                        setColorFilter(if (item.original) pl.sinusoide.sinuschat.ui.ThemeUi.onAccent(ctx) else 0xFFFFFFFF.toInt())
+                        alpha = if (item.original) 1f else 0.7f
+                    }
+                    paint()
+                    setOnClickListener {
+                        item.original = !item.original
+                        paint()
+                        vibrate(20)
+                        PopupHelper.show(this@ChatActivity, getString(
+                            if (item.original) R.string.original_quality_on else R.string.original_quality_off))
+                    }
+                })
+            }
 
             val gd = android.view.GestureDetector(this, object : android.view.GestureDetector.SimpleOnGestureListener() {
                 override fun onDoubleTap(e: android.view.MotionEvent): Boolean {
@@ -3688,6 +3686,7 @@ open class ChatActivity : AppCompatActivity() {
                     }
                     item.viewOnce = !item.viewOnce
                     lockOverlay.visibility = if (item.viewOnce) View.VISIBLE else View.GONE
+                    videoBadge?.visibility = if (item.viewOnce) View.GONE else View.VISIBLE
                     vibrate(20)
                     if (item.viewOnce) {
                         lockOverlay.alpha = 0f
@@ -4019,12 +4018,17 @@ open class ChatActivity : AppCompatActivity() {
         val app = applicationContext
         AppExecutor.io {
             val sized = staged.map { it to AttachmentSender.sizeOf(app, it.uri) }
+            val shrinkable = staged.filter { s ->
+                s.kind == StagedKind.VIDEO && !s.original &&
+                    pl.sinusoide.sinuschat.util.VideoPrep.canStrip(AttachmentSender.displayName(app, s.uri).orEmpty())
+            }.toSet()
             AppExecutor.main {
                 if (isFinishing || isDestroyed) return@main
                 val limit = pl.sinusoide.sinuschat.util.FileUploader.MAX_CONTENT
-                val fits = sized.filter { it.second <= limit }.map { stagedItem(it.first, target) }
+                val (direct, over) = sized.partition { it.second <= limit || it.first in shrinkable }
+                val fits = direct.map { stagedItem(it.first, target) }
                 if (fits.isNotEmpty()) AttachmentSender.send(this, target, fits, caption)
-                sendOversized(target, sized.filter { it.second > limit }, if (fits.isEmpty()) caption else null)
+                sendOversized(target, over, if (fits.isEmpty()) caption else null)
             }
         }
     }
@@ -4034,7 +4038,7 @@ open class ChatActivity : AppCompatActivity() {
             StagedKind.IMAGE -> AttachmentSender.Kind.IMAGE
             StagedKind.VIDEO -> AttachmentSender.Kind.VIDEO
             StagedKind.FILE -> AttachmentSender.Kind.FILE
-        }, s.viewOnce && !target.isGroup, packed = packed)
+        }, s.viewOnce && !target.isGroup, packed = packed, original = s.original)
 
     private fun sendOversized(
         target: AttachmentSender.Target, list: List<Pair<StagedAttachment, Long>>,
@@ -4647,6 +4651,10 @@ open class ChatActivity : AppCompatActivity() {
     }
 
     private fun updateVoiceTimer() {
+        if (voiceRecorder.limitReached) {
+            stopAndSendVoice()
+            return
+        }
         val s = voiceRecorder.durationSeconds
         voiceTimerView?.text = "%d:%02d".format(s / 60, s % 60)
         voiceLiveWave?.let { wv ->
@@ -4822,16 +4830,7 @@ open class ChatActivity : AppCompatActivity() {
     }
 
     private fun notifyScreenshotAttempt() {
-        if (conversationId.isEmpty() || myPhoneHash.isEmpty()) return
-        AppExecutor.io {
-            val payload = org.json.JSONObject().put("senderHash", myPhoneHash).put("timestamp", System.currentTimeMillis())
-            val body = org.json.JSONObject().apply {
-                put("conversationId", conversationId); put("messageId", java.util.UUID.randomUUID().toString())
-                put("kind", "screenshot_attempt"); put("recipientHash", otherUserHash)
-                put("payloadB64", android.util.Base64.encodeToString(payload.toString().toByteArray(), android.util.Base64.NO_WRAP))
-            }
-            pl.sinusoide.sinuschat.crypto.SealedSender.post(this, body)
-        }
+        pl.sinusoide.sinuschat.util.CaptureGuard.notifyAttempt(this, conversationId, myPhoneHash, otherUserHash, duringCall = false)
     }
 
     private val disappearingRequestReceiver = object : BroadcastReceiver() {

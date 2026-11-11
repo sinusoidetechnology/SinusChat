@@ -349,6 +349,29 @@ class MainActivity : AppCompatActivity() {
         clearNotifications()
         enableNfcReader()
         refreshMissedCallsBadge()
+        try {
+            registerReceiver(handoffReceiver, android.content.IntentFilter(pl.sinusoide.sinuschat.pclink.PcHandoff.ACTION),
+                android.content.Context.RECEIVER_NOT_EXPORTED)
+        } catch (_: Exception) {}
+        pl.sinusoide.sinuschat.pclink.PcHandoff.take()?.let { openFromPc(it) }
+    }
+
+    private val handoffReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(c: android.content.Context?, i: Intent?) {
+            if (isAppInForeground) pl.sinusoide.sinuschat.pclink.PcHandoff.take()?.let { openFromPc(it) }
+        }
+    }
+
+    private fun openFromPc(section: String, attempt: Int = 0) {
+        if (!::viewPager.isInitialized || isFinishing || isDestroyed) return
+        val settings = (viewPager.adapter?.itemCount ?: 1) - 1
+        if (viewPager.currentItem != settings) viewPager.setCurrentItem(settings, false)
+        val fragment = supportFragmentManager.findFragmentByTag("f$settings") as? AboutFragment
+        if (fragment != null && fragment.isAdded && fragment.view != null) {
+            fragment.openFromPc(section)
+        } else if (attempt < 20) {
+            viewPager.postDelayed({ openFromPc(section, attempt + 1) }, 100L)
+        }
     }
 
     private fun clearNotifications() {
@@ -367,6 +390,7 @@ class MainActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         isAppInForeground = false
+        try { unregisterReceiver(handoffReceiver) } catch (_: Exception) {}
         disableNfcReader()
     }
 

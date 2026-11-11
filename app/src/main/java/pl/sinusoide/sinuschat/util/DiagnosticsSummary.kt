@@ -43,11 +43,6 @@ object DiagnosticsSummary {
         val dbEncrypted = pl.sinusoide.sinuschat.crypto.DbCrypto.isDbEncrypted(context) ||
             !pl.sinusoide.sinuschat.crypto.DbCrypto.dbExists(context)
         line(dbError == null && dbEncrypted, "database encryption" + (dbError?.let { " ($it)" }.orEmpty()))
-        LinkLog.report(context).takeIf { it.isNotEmpty() }?.let {
-            sb.appendLine()
-            sb.appendLine("Links and crashes:")
-            sb.appendLine(it)
-        }
         LinkLog.lastCrash(context).takeIf { it.isNotEmpty() }?.let {
             sb.appendLine()
             sb.appendLine("Last app crash:")
@@ -58,8 +53,15 @@ object DiagnosticsSummary {
             sb.appendLine("Recent app exits (Android):")
             sb.appendLine(it)
         }
+        LinkLog.report(context, (REPORT_LIMIT - sb.length - 64).coerceAtLeast(1000)).takeIf { it.isNotEmpty() }?.let {
+            sb.appendLine()
+            sb.appendLine("Events (last 3 days):")
+            sb.appendLine(it)
+        }
         return sb.toString().trim()
     }
+
+    private const val REPORT_LIMIT = 15_500
 
     private fun onOff(b: Boolean) = if (b) "on" else "off"
 }

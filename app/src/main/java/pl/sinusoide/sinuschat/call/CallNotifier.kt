@@ -39,6 +39,7 @@ object CallNotifier {
 
     private fun ringTimedOut(ctx: Context, conversationId: String, ring: Ring) {
         if (ringing[conversationId] !== ring) return
+        pl.sinusoide.sinuschat.pclink.PcLinkCalls.onRingStopped(conversationId, pl.sinusoide.sinuschat.link.LinkFrame.CALL_NO_ANSWER)
         showMissedCall(ctx, conversationId, ring.fromHash, ring.fromName, ring.isVideo)
         markCancelled(conversationId)
         ctx.sendBroadcast(Intent(IncomingCallActivity.ACTION_CALL_CANCELLED).setPackage(ctx.packageName)
@@ -245,6 +246,7 @@ class CallActionReceiver : android.content.BroadcastReceiver() {
         val fromName = intent.getStringExtra("fromName") ?: "Nieznany"
         val isVideo  = intent.getBooleanExtra("isVideo", false)
         CallNotifier.cancel(ctx)
+        pl.sinusoide.sinuschat.pclink.PcLinkCalls.onRingStopped(convId, pl.sinusoide.sinuschat.link.LinkFrame.CALL_DECLINED)
 
         if (fromHash.isNotEmpty()) {
             CallNotifier.showMissedCall(ctx, convId, fromHash, fromName, isVideo, declined = true)

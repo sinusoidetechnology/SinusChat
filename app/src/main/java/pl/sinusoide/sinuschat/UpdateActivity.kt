@@ -35,12 +35,14 @@ class UpdateActivity : AppCompatActivity() {
     companion object {
         const val EXTRA_NAME = "update_name"
         const val EXTRA_FOR_REPORT = "update_for_report"
+        const val EXTRA_PAGE = "update_page"
 
         fun open(ctx: Context, latest: UpdateChecker.Latest? = null, forReport: Boolean = false) {
             ctx.startActivity(Intent(ctx, UpdateActivity::class.java).apply {
                 if (latest != null) {
                     putExtra(UpdateChecker.EXTRA_CODE, latest.code)
                     putExtra(EXTRA_NAME, latest.name)
+                    latest.page?.let { putExtra(EXTRA_PAGE, it) }
                 }
                 if (forReport) putExtra(EXTRA_FOR_REPORT, true)
                 if (ctx !is android.app.Activity) addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -117,7 +119,7 @@ class UpdateActivity : AppCompatActivity() {
         val code = intent.getLongExtra(UpdateChecker.EXTRA_CODE, 0L)
         val name = intent.getStringExtra(EXTRA_NAME)
         if (code > 0L && !name.isNullOrBlank()) {
-            render(UpdateChecker.Latest(code, name), animate = true)
+            render(UpdateChecker.Latest(code, name, intent.getStringExtra(EXTRA_PAGE)), animate = true)
         } else {
             showLoading()
             AppExecutor.io {
@@ -238,6 +240,15 @@ class UpdateActivity : AppCompatActivity() {
                 UpdateChecker.openPlay(this)
                 finish()
             }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (24 * dp).toInt() })
+            body.addView(text(getString(R.string.updater_github), 13.5f, cSecondary, false).apply {
+                val p = (10 * dp).toInt(); setPadding(p, p, p, p)
+                background = ContextCompat.getDrawable(this@UpdateActivity, R.drawable.bg_menu_ripple)
+                isClickable = true
+                setOnClickListener {
+                    pl.sinusoide.sinuschat.util.SafeEngine.openLink(this@UpdateActivity,
+                        latest.page ?: UpdateChecker.RELEASES_URL)
+                }
+            }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = (6 * dp).toInt() })
             if (!forReport) body.addView(button(getString(R.string.update_later), false) {
                 UpdateChecker.snooze(this, latest.code)
                 finish()

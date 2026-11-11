@@ -15,6 +15,7 @@ import android.provider.Settings
 import android.util.Log
 import pl.sinusoide.sinuschat.BuildConfig
 import pl.sinusoide.sinuschat.link.LinkAuthorization
+import pl.sinusoide.sinuschat.link.LinkBeacon
 import pl.sinusoide.sinuschat.link.LinkChannel
 import pl.sinusoide.sinuschat.link.LinkConnection
 import pl.sinusoide.sinuschat.link.LinkFrame
@@ -32,25 +33,45 @@ object PcLinkServer {
 
     private const val TAG = "PcLink"
     private const val MAX_PENDING_SOCKETS = 8
+    private const val BEACON_ROTATE_MS = 15 * 60_000L
+    private const val HOTSPOT_POLL_MS = 20_000L
 
     private val main = Handler(Looper.getMainLooper())
     private val control = Executors.newSingleThreadExecutor()
     private val handshakes = Executors.newFixedThreadPool(2)
+    private val outbound = Executors.newSingleThreadExecutor()
     private val connections = ConcurrentHashMap<String, LinkConnection>()
     private val listeners = mutableSetOf<() -> Unit>()
 
     @Volatile private var app: Context? = null
     @Volatile private var wifiAddress: InetAddress? = null
+    @Volatile private var hotspotAddress: InetAddress? = null
+    private var hotspotWatch = false
+    private val hotspotPoll = object : Runnable {
+        override fun run() {
+            control.execute { scanHotspot() }
+            main.postDelayed(this, HOTSPOT_POLL_MS)
+        }
+    }
+    private val tetherNames = Regex("^(ap|swlan|softap|wlan|wigig|rndis|usb|ncm|eth|bt-pan)[0-9]*.*")
     @Volatile private var server: ServerSocket? = null
     @Volatile private var boundAddress: InetAddress? = null
     private var nsdListener: NsdManager.RegistrationListener? = null
+    private val rotateBeacon = Runnable { control.execute { renewBeacon() } }
     private var netCallbackRegistered = false
 
     fun init(ctx: Context) {
         val c = ctx.applicationContext
         if (app == null) app = c
         registerWifiCallback(c)
+        watchHotspot(c)
         refresh()
+        PcProximity.init(c)
+    }
+
+    fun sendTo(key: String, frame: LinkFrame) {
+        val conn = connections[key]?.takeIf { it.isOpen } ?: return
+        outbound.execute { conn.send(frame) }
     }
 
     fun addListener(l: () -> Unit) { synchronized(listeners) { listeners += l } }
@@ -60,11 +81,84 @@ object PcLinkServer {
     private fun notifyChanged() {
         val copy = synchronized(listeners) { listeners.toList() }
         main.post { copy.forEach { it() } }
+        app?.let { PcLinkService.update(it) }
     }
 
-    fun isOnWifi(): Boolean = wifiAddress != null
+    fun isOnWifi(): Boolean = currentAddress() != null
+
+    private fun currentAddress(): InetAddress? = wifiAddress ?: hotspotAddress
+
+    private fun findHotspot(): InetAddress? = runCatching {
+        java.net.NetworkInterface.getNetworkInterfaces()?.toList().orEmpty()
+            .filter { it.isUp && !it.isLoopback && tetherNames.matches(it.name) }
+            .flatMap { it.inetAddresses.toList() }
+            .firstOrNull { it is Inet4Address && it.isSiteLocalAddress && it != wifiAddress }
+    }.getOrNull()
+
+    private fun scanHotspot() {
+        val found = if (wifiAddress != null) null else findHotspot()
+        if (found == hotspotAddress) return
+        hotspotAddress = found
+        Log.d(TAG, "hotspot ${found?.hostAddress}")
+        reconcile()
+        notifyChanged()
+    }
+
+    private fun watchHotspot(ctx: Context) {
+        if (hotspotWatch) return
+        hotspotWatch = true
+        main.post(hotspotPoll)
+        val filter = android.content.IntentFilter().apply {
+            addAction("android.net.wifi.WIFI_AP_STATE_CHANGED")
+            addAction("android.net.conn.TETHER_STATE_CHANGED")
+        }
+        runCatching {
+            androidx.core.content.ContextCompat.registerReceiver(ctx, object : android.content.BroadcastReceiver() {
+                override fun onReceive(context: Context, intent: android.content.Intent) {
+                    main.postDelayed({ control.execute { scanHotspot() } }, 1_500L)
+                    main.postDelayed({ control.execute { scanHotspot() } }, 5_000L)
+                }
+            }, filter, androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED)
+        }
+    }
 
     fun isConnected(key: String): Boolean = connections[key]?.isOpen == true
+
+    fun connectedCount(): Int = connections.values.count { it.isOpen }
+
+    fun connectedDevices(ctx: Context): List<PcLinkStore.Pc> {
+        val open = connections.filterValues { it.isOpen }.keys
+        return PcLinkStore.pcs(ctx).filter { it.key in open }
+    }
+
+    fun listenAddress(): String? {
+        val ss = server ?: return null
+        val addr = boundAddress ?: return null
+        if (ss.isClosed || paused) return null
+        return "${addr.hostAddress}:${ss.localPort}"
+    }
+
+    @Volatile var paused = false
+        private set
+
+    fun pause() {
+        control.execute {
+            paused = true
+            app?.let { PcProximity.refresh(it) }
+            connections.values.forEach { it.close(LinkFrame.BYE_PAUSED) }
+            connections.clear()
+            stopServer()
+            notifyChanged()
+        }
+    }
+
+    fun resume() {
+        if (!paused) return
+        paused = false
+        refresh()
+        app?.let { PcProximity.refresh(it) }
+        notifyChanged()
+    }
 
     fun refresh() {
         control.execute { reconcile() }
@@ -75,7 +169,9 @@ object PcLinkServer {
             val ctx = app ?: return@execute
             PcLinkStore.remove(ctx, key)
             connections.remove(key)?.close(LinkFrame.BYE_UNPAIRED)
+            PcProximity.refresh(ctx)
             reconcile()
+            renewBeacon()
             notifyChanged()
         }
     }
@@ -89,11 +185,11 @@ object PcLinkServer {
     }
 
     private fun shouldRun(ctx: Context): Boolean =
-        PcLinkStore.isPairing() || PcLinkStore.pcs(ctx).isNotEmpty()
+        !paused && (PcLinkStore.isPairing() || PcLinkStore.pcs(ctx).isNotEmpty())
 
     private fun reconcile() {
         val ctx = app ?: return
-        val addr = wifiAddress
+        val addr = currentAddress()
         if (addr == null || !shouldRun(ctx)) {
             if (server != null) stopServer()
             if (addr == null) connections.values.forEach { it.close(LinkFrame.BYE_CLOSING) }
@@ -141,7 +237,7 @@ object PcLinkServer {
         val ctx = app ?: run { runCatching { socket.close() }; return }
         try {
             socket.tcpNoDelay = true
-            val channel = LinkHandshake.accept(socket, PcLinkStore.identity(ctx)) { mode, pcKey ->
+            val channel = LinkHandshake.accept(socket, PcLinkStore.identity(ctx), { PcLinkStore.pairingTokens() }) { mode, pcKey ->
                 authorize(ctx, mode, pcKey)
             }
             onAuthenticated(ctx, socket, channel)
@@ -168,6 +264,7 @@ object PcLinkServer {
             PcLinkStore.pairingDone(channel.peerKey)
             val old = PcLinkStore.find(ctx, channel.peerKey)
             PcLinkStore.upsert(ctx, PcLinkStore.Pc(key, old?.name ?: "", old?.pairedAt ?: now, now, old?.app ?: ""))
+            control.execute { renewBeacon() }
         } else {
             PcLinkStore.update(ctx, key, lastSeen = now)
         }
@@ -189,10 +286,19 @@ object PcLinkServer {
                     PcLinkStore.update(ctx, key, name = frame.name.trim().take(64), app = frame.app.trim().take(64))
                     notifyChanged()
                 }
+                is LinkFrame.ProximitySetup -> PcProximitySetup.onFrame(ctx, key, frame)
+                is LinkFrame.Proximity -> {
+                    PcLinkStore.update(ctx, key, proximity = frame.on)
+                    PcProximity.refresh(ctx)
+                    connection.send(LinkFrame.ProximityState(PcProximity.stateFor(ctx, PcLinkStore.find(ctx, connection.peerKey))))
+                }
                 is LinkFrame.Bye -> {
+                    Log.d(TAG, "bye od komputera: ${frame.reason}")
                     if (frame.reason == LinkFrame.BYE_UNPAIRED) {
                         PcLinkStore.remove(ctx, key)
+                        PcProximity.refresh(ctx)
                         refresh()
+                        control.execute { renewBeacon() }
                     }
                     connection.close()
                 }
@@ -201,6 +307,7 @@ object PcLinkServer {
         }
 
         override fun onClosed(connection: LinkConnection, error: Throwable?) {
+            Log.d(TAG, "komputer rozłączony ${connection.peerId}: ${error?.javaClass?.simpleName ?: "-"} ${error?.message ?: ""}")
             PcLinkHub.onDisconnected(connection)
             val ctx = app ?: return
             val key = PcLinkStore.encode(connection.peerKey)
@@ -222,7 +329,7 @@ object PcLinkServer {
             serviceName = "SinusChat"
             serviceType = LinkProtocol.SERVICE_TYPE
             setPort(port)
-            setAttribute(LinkProtocol.TXT_ID, PcLinkStore.identity(ctx).id)
+            setAttribute(LinkProtocol.TXT_ID, LinkBeacon.create(PcLinkStore.identity(ctx), PcLinkStore.pcs(ctx).map { it.keyBytes }))
         }
         val listener = object : NsdManager.RegistrationListener {
             override fun onServiceRegistered(info: NsdServiceInfo) { Log.d(TAG, "NSD: ${info.serviceName}") }
@@ -232,13 +339,35 @@ object PcLinkServer {
         }
         try {
             nsd.registerService(info, NsdManager.PROTOCOL_DNS_SD, listener)
+            LocalNetworkAccess.nsdDenied = false
             nsdListener = listener
+            main.removeCallbacks(rotateBeacon)
+            main.postDelayed(rotateBeacon, BEACON_ROTATE_MS)
+        } catch (e: SecurityException) {
+            Log.w(TAG, "NSD: ${e.message}")
+            LocalNetworkAccess.nsdDenied = true
+            notifyChanged()
         } catch (e: Exception) {
             Log.w(TAG, "NSD: ${e.message}")
         }
     }
 
+    fun retryLocalNetwork() {
+        LocalNetworkAccess.nsdDenied = false
+        control.execute { renewBeacon() }
+        notifyChanged()
+    }
+
+    private fun renewBeacon() {
+        val ctx = app ?: return
+        val ss = server ?: return
+        if (ss.isClosed) return
+        unregisterNsd()
+        registerNsd(ctx, ss.localPort)
+    }
+
     private fun unregisterNsd() {
+        main.removeCallbacks(rotateBeacon)
         val l = nsdListener ?: return
         nsdListener = null
         val ctx = app ?: return
@@ -282,6 +411,7 @@ object PcLinkServer {
     private fun setWifi(addr: InetAddress?) {
         if (wifiAddress == addr) return
         wifiAddress = addr
+        control.execute { scanHotspot() }
         refresh()
         notifyChanged()
     }

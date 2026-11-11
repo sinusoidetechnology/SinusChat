@@ -28,13 +28,13 @@ object FileUploader {
     )
 
     const val MAX_CONTENT = 150L * 1024 * 1024
+    const val VOICE_DOWNLOADS = 3
     private const val MAX_CHUNKED_CIPHER = 160L * 1024 * 1024
     private const val SINGLE_MAX = 40L * 1024 * 1024
     private const val CHUNK = 16L * 1024 * 1024
     private const val CHUNK_TRIES = 3
     private const val CHUNK_TOKEN_MIN_MS = 270_000L
     private const val PARALLEL_PARTS = 2
-    private const val MAX_VOICE_CIPHER = 2 * 1024 * 1024 - 16
 
     private fun workDir(context: Context, name: String): File = File(context.cacheDir, name).apply { mkdirs() }
 
@@ -277,7 +277,8 @@ object FileUploader {
     }
 
     fun downloadDecryptToFile(context: Context, fileId: String, fileKey: String, target: File,
-                              onProgress: ((Float) -> Unit)? = null, onMissing: (() -> Unit)? = null): Boolean {
+                              onProgress: ((Float) -> Unit)? = null, onMissing: (() -> Unit)? = null,
+                              onBytes: ((Long, Long) -> Unit)? = null): Boolean {
         val enc = File(workDir(context, "download_enc"), java.util.UUID.randomUUID().toString() + ".enc")
         val dir = target.parentFile ?: return false
         val plain = File(dir, target.name + ".part")
@@ -293,8 +294,9 @@ object FileUploader {
             var fetched: Int? = null
             for (attempt in 1..3) {
                 if (attempt > 1) Thread.sleep(2000L * (attempt - 1))
-                fetched = pl.sinusoide.sinuschat.network.ApiClient.getToFile(context, "$BASE_URL?action=download&ack=1", hdrs, enc) { p ->
-                    onProgress?.invoke(p * 0.97f)
+                fetched = pl.sinusoide.sinuschat.network.ApiClient.getRangedToFile(context, "$BASE_URL?action=download&ack=1", hdrs, enc) { done, total ->
+                    if (total > 0) onProgress?.invoke((done.toFloat() / total).coerceAtMost(1f) * 0.97f)
+                    onBytes?.invoke(done, total)
                 }
                 if (fetched != null) break
             }
@@ -381,34 +383,30 @@ object FileUploader {
     private fun stripExifMetadata(imageBytes: ByteArray): ByteArray? =
         ImagePrep.forSending(imageBytes)
 
-    fun uploadVoiceBlocking(context: Context, file: java.io.File): Pair<String, String>? {
-        return try {
-            val token = pl.sinusoide.sinuschat.network.ApiClient.getToken(context) ?: return null
-            val bytes = file.readBytes()
-
-            if (bytes.size > 10 * 1024 * 1024) {
-                Log.e(TAG, "Głosówka za duża: ${bytes.size / 1024}KB")
-                return null
-            }
-            val (cipher, fileKey) = encryptBytes(bytes, MAX_VOICE_CIPHER) ?: return null
-
-            val (code, body) = pl.sinusoide.sinuschat.network.ApiClient.rawPost(context,
-                pl.sinusoide.sinuschat.AppConfig.UPLOAD_VOICE_URL, cipher, "audio/ogg",
-                mapOf("Authorization" to "Bearer $token")) ?: return null
-            NetworkSettings.recordSent(context, cipher.size.toLong())
-            if (code !in 200..299) {
-                Log.e(TAG, "Voice upload failed: $code")
-                return null
-            }
-            val url = org.json.JSONObject(body.toString(Charsets.UTF_8)).optStringOrNull("url") ?: return null
-            url to fileKey
-        } catch (e: Exception) {
-            Log.e(TAG, "Voice upload error", e)
-            null
+    fun uploadVoiceBlocking(context: Context, file: java.io.File, maxDownloads: Int = VOICE_DOWNLOADS): Pair<String, String>? {
+        if (file.length() <= 0L || file.length() > MAX_CONTENT) {
+            Log.e(TAG, "Głosówka poza limitem: ${file.length() / 1024}KB")
+            return null
         }
+        val up = uploadEncryptedFileBlocking(context, file, "voice.ogg", maxDownloads) ?: return null
+        return up.fileId to up.fileKey
+    }
+
+    fun isHostedVoice(source: String): Boolean = !source.startsWith("http")
+
+    fun downloadVoiceToFile(context: Context, source: String, fileKey: String?, target: File): Boolean {
+        if (isHostedVoice(source)) {
+            if (fileKey.isNullOrEmpty()) return false
+            return downloadDecryptToFile(context, source, fileKey, target)
+        }
+        val bytes = downloadVoiceBlocking(context, source, fileKey) ?: return false
+        if (bytes.isEmpty()) return false
+        target.writeBytes(bytes)
+        return true
     }
 
     fun downloadVoiceBlocking(context: Context, url: String, fileKey: String?): ByteArray? {
+        if (isHostedVoice(url)) return fileKey?.takeIf { it.isNotEmpty() }?.let { downloadAndDecryptBlocking(context, url, it) }
         val token = pl.sinusoide.sinuschat.network.ApiClient.getToken(context) ?: return null
         val (code, bytes) = pl.sinusoide.sinuschat.network.ApiClient.rawGet(context, url,
             mapOf("Authorization" to "Bearer $token")) ?: return null

@@ -17,5 +17,6 @@ object ChatPins {
         val ed = prefs(ctx).edit()
         if (pinned) ed.putLong(conversationId, System.currentTimeMillis()) else ed.remove(conversationId)
         ed.apply()
+        pl.sinusoide.sinuschat.pclink.PcLinkHub.refreshChats()
     }
 }

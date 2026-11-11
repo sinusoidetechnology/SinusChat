@@ -25,8 +25,8 @@ android {
         applicationId = "pl.sinusoide.sinuschat"
         minSdk = 26
         targetSdk = 36
-        versionCode = 25
-        versionName = "1.2.2"
+        versionCode = 26
+        versionName = "1.3"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         buildConfigField("String", "FCM_API_KEY", "\"${fcmProp("fcm.apiKey")}\"")
@@ -123,9 +123,6 @@ dependencies {
     implementation("com.duckduckgo.translatekit:translate-kit-android:0.1.0")
 
     implementation("com.google.ai.edge.litertlm:litertlm-android:0.11.0")
-    implementation("com.google.android.gms:play-services-tflite-java:16.4.0")
-    implementation("com.google.android.gms:play-services-tflite-gpu:16.4.0")
-    implementation("com.google.android.gms:play-services-tflite-support:16.4.0")
 
     implementation("androidx.biometric:biometric:1.1.0")
 
@@ -164,6 +161,9 @@ dependencies {
     implementation("info.guardianproject:jtorctl:0.4.5.7")
 
     implementation("androidx.work:work-runtime-ktx:2.9.0")
+    implementation("androidx.media3:media3-transformer:1.11.1")
+    implementation("androidx.media3:media3-effect:1.11.1")
+    implementation("androidx.media3:media3-common:1.11.1")
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

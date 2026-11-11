@@ -20,13 +20,14 @@ class LinkHandshakeTest {
 
     private fun <T> withServer(
         authorize: (Int, ByteArray) -> LinkAuthorization,
+        tokens: List<ByteArray> = emptyList(),
         client: (Socket) -> T
     ): Pair<Result<LinkChannel>, Result<T>> {
         ServerSocket(0, 1, InetAddress.getLoopbackAddress()).use { server ->
             val serverSide = CompletableFuture<Result<LinkChannel>>()
             thread {
                 server.accept().use { s ->
-                    val r = runCatching { LinkHandshake.accept(s, phone, authorize) }
+                    val r = runCatching { LinkHandshake.accept(s, phone, { tokens }, authorize) }
                     serverSide.complete(r)
                     r.getOrNull()?.let { ch -> runCatching { ch.write(ch.read() ?: LinkFrame.Bye("none")) } }
                 }
@@ -43,7 +44,7 @@ class LinkHandshakeTest {
         val (server, client) = withServer({ mode, key ->
             if (mode == LinkHandshake.MODE_PAIR && LinkCrypto.equal(key, decoded.pcKey)) LinkAuthorization.Accept(decoded.token)
             else LinkAuthorization.Reject(LinkHandshake.REJECT_NOT_PAIRING)
-        }) { s ->
+        }, listOf(decoded.token)) { s ->
             val ch = LinkHandshake.connect(s, pc, LinkMode.Pair(code.token))
             ch.write(LinkFrame.Hello("PC", "test"))
             ch.peerKey to ch.read()
@@ -84,10 +85,11 @@ class LinkHandshakeTest {
     @Test
     fun wrongPairingTokenFails() {
         val code = PairingCode.create(pc.publicBytes)
-        val (server, client) = withServer({ _, _ -> LinkAuthorization.Accept(code.token) }) { s ->
+        val (server, client) = withServer({ _, _ -> LinkAuthorization.Accept(code.token) }, listOf(code.token)) { s ->
             LinkHandshake.connect(s, pc, LinkMode.Pair(LinkCrypto.randomBytes(16)))
         }
-        assertFailsWith<LinkHandshakeException> { client.getOrThrow() }
+        val e = assertFailsWith<LinkRejected> { client.getOrThrow() }
+        assertEquals(LinkHandshake.REJECT_NOT_PAIRING, e.code)
         assertTrue(server.isFailure)
     }
 
@@ -97,7 +99,7 @@ class LinkHandshakeTest {
         val (_, client) = withServer({ _, _ -> LinkAuthorization.Accept(ByteArray(0)) }) { s ->
             LinkHandshake.connect(s, pc, LinkMode.Resume(impostor.publicBytes))
         }
-        assertFailsWith<LinkHandshakeException> { client.getOrThrow() }
+        assertFailsWith<java.io.IOException> { client.getOrThrow() }
     }
 
     @Test

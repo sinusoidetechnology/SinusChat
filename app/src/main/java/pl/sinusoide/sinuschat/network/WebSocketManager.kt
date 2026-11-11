@@ -31,6 +31,10 @@ object WebSocketManager {
     private val mainHandler   = Handler(Looper.getMainLooper())
     private var socket: WebSocket? = null
     private val authed        = AtomicBoolean(false)
+    @Volatile private var lastPongMs = 0L
+    private const val PONG_WAIT_MS = 15_000L
+    private const val KICK_CHECK_TRIES = 6
+    private const val KICK_CHECK_DELAY_MS = 10_000L
     private val active        = AtomicBoolean(false)
     private val connecting    = AtomicBoolean(false)
     private var appCtx: Context? = null
@@ -70,7 +74,6 @@ object WebSocketManager {
     private fun buildClient(context: Context?): OkHttpClient {
         val builder = OkHttpClient.Builder()
             .readTimeout(0, TimeUnit.MILLISECONDS)
-            .pingInterval(20, TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)
         if (context != null && pl.sinusoide.sinuschat.util.PrivacySettings.isTorEnabled(context)) {
             builder.proxy(
@@ -85,7 +88,14 @@ object WebSocketManager {
 
     private val pingTask = object : Runnable {
         override fun run() {
+            val sent = android.os.SystemClock.elapsedRealtime()
             send(JSONObject().put("type", "ping"))
+            mainHandler.postDelayed({
+                if (authed.get() && lastPongMs < sent && inUse()) {
+                    Log.d(TAG, "ping: brak odpowiedzi serwera, łączę ponownie")
+                    forceReconnect()
+                }
+            }, PONG_WAIT_MS)
             val isChatOpen = MessageListenerService.currentlyOpenConversationId != null
             val next = if (isChatOpen) PING_INTERVAL_ACTIVE_MS else PING_INTERVAL_MS
             mainHandler.postDelayed(this, next)
@@ -93,14 +103,46 @@ object WebSocketManager {
     }
 
     @Volatile private var stopKicked = false
+    @Volatile private var serverBoot = 0L
+    @Volatile private var serverCaps: Set<String> = emptySet()
+
+    fun serverHas(cap: String): Boolean = cap in serverCaps
+
+    private fun inUse() = pl.sinusoide.sinuschat.SinusApp.isForeground ||
+        pl.sinusoide.sinuschat.util.UserStatusManager.isRemoteActive
 
     fun isConnected() = authed.get()
 
-    fun stopPing() { mainHandler.removeCallbacks(pingTask) }
+    fun stopPing() {
+        mainHandler.removeCallbacks(pingTask)
+        if (authed.get()) sendBackground(true)
+    }
 
     fun resumePing() {
         mainHandler.removeCallbacks(pingTask)
-        if (authed.get()) mainHandler.post(pingTask)
+        if (authed.get()) {
+            sendBackground(false)
+            mainHandler.post(pingTask)
+        }
+    }
+
+    private fun sendBackground(on: Boolean) {
+        try { socket?.send(JSONObject().put("type", "bg").put("on", on).toString()) } catch (_: Exception) {}
+    }
+
+    fun keepAlive() {
+        if (!authed.get()) {
+            if (!connecting.get()) mainHandler.post { doConnect() }
+            return
+        }
+        val sent = android.os.SystemClock.elapsedRealtime()
+        send(JSONObject().put("type", "ping"))
+        mainHandler.postDelayed({
+            if (authed.get() && lastPongMs < sent) {
+                Log.d(TAG, "keepAlive: brak odpowiedzi serwera, łączę ponownie")
+                forceReconnect()
+            }
+        }, PONG_WAIT_MS)
     }
 
     fun connect(context: Context) {
@@ -126,6 +168,11 @@ object WebSocketManager {
     fun reset() {
         disconnect()
         stopKicked = false
+    }
+
+    fun clearKick(context: Context) {
+        stopKicked = false
+        connect(context)
     }
 
     fun reconnectNow() {
@@ -266,22 +313,26 @@ object WebSocketManager {
                             runCatching { webSocket.close(1000, "superseded") }
                             return
                         }
-                        Log.w(TAG, "device_kicked — zalogowano na innym urządzeniu")
+                        Log.w(TAG, "device_kicked — sprawdzam na serwerze")
                         authed.set(false)
-                        stopKicked = true
-                        AppExecutor.main {
-                            ApiClient.onDeviceKicked(ctx)
-                        }
-                        runCatching { socket?.close(1000, "device_kicked") }
+                        runCatching { webSocket.close(1000, "device_kicked") }
+                        AppExecutor.io { confirmKick(ctx, 0) }
                     }
                     "auth_ok" -> {
                         authed.set(true)
                         connecting.set(false)
                         reconnectDelay = RECONNECT_MIN_MS
                         mainHandler.removeCallbacks(pingTask)
-                        mainHandler.post(pingTask)
+                        if (inUse()) mainHandler.post(pingTask)
+                        else sendBackground(true)
                         flushOutbox()
                         Log.d(TAG, "Authenticated as ${msg.optString("hash")}")
+                        serverCaps = msg.optJSONArray("caps")?.let { a -> (0 until a.length()).map { a.optString(it) }.toSet() }.orEmpty()
+                        val boot = msg.optLong("boot", 0L)
+                        if (boot > 0L && boot != serverBoot) {
+                            serverBoot = boot
+                            pl.sinusoide.sinuschat.util.UserStatusManager.resendAfterServerStart(ctx)
+                        }
                         AppExecutor.main { onReconnected?.invoke() }
                     }
                     "auth_error" -> {
@@ -292,7 +343,7 @@ object WebSocketManager {
                             ApiClient.autoRegisterIfNeeded(ctx) { ok -> if (ok) reconnectNow() }
                         }
                     }
-                    "pong" -> { }
+                    "pong" -> { lastPongMs = android.os.SystemClock.elapsedRealtime() }
                     "typing" -> {
                         val typingConvId = msg.optString("conversationId")
                         val senderHash = msg.optString("senderHash")
@@ -308,6 +359,7 @@ object WebSocketManager {
                         val heartbeat = msg.optLong("heartbeatMs", 0L)
                         val lastSeen = msg.optLong("lastSeenMs", 0L)
                         if (userHash.isNotEmpty()) {
+                            pl.sinusoide.sinuschat.pclink.PcLinkHub.onPresence(userHash, heartbeat, lastSeen)
                             AppExecutor.main { onPresenceCallback?.invoke(userHash, heartbeat, lastSeen) }
                         }
                     }
@@ -403,6 +455,7 @@ object WebSocketManager {
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 Log.e(TAG, "Failure: ${t.message} | HTTP ${response?.code} ${response?.message}")
+                appCtx?.let { pl.sinusoide.sinuschat.util.LinkLog.addThrottled(it, "ws", "${t.javaClass.simpleName} ${response?.code ?: ""}".trim()) }
                 onLost(webSocket)
             }
         })
@@ -417,6 +470,24 @@ object WebSocketManager {
         mainHandler.removeCallbacks(reconnectRunnable)
         reconnectDelay = RECONNECT_MIN_MS
         mainHandler.post { doConnect() }
+    }
+
+    private fun confirmKick(ctx: Context, tries: Int) {
+        when (ApiClient.stillActive(ctx)) {
+            false -> {
+                Log.w(TAG, "device_kicked potwierdzony — zalogowano na innym urządzeniu")
+                stopKicked = true
+                AppExecutor.main { ApiClient.onDeviceKicked(ctx) }
+            }
+            true -> {
+                Log.w(TAG, "device_kicked bez potwierdzenia serwera — łączę ponownie")
+                pl.sinusoide.sinuschat.util.LinkLog.add(ctx, "kick", "fałszywy device_kicked, sesja aktywna")
+                mainHandler.post { reconnectNow() }
+            }
+            null -> if (tries < KICK_CHECK_TRIES) {
+                mainHandler.postDelayed({ AppExecutor.io { confirmKick(ctx, tries + 1) } }, KICK_CHECK_DELAY_MS)
+            }
+        }
     }
 
     private fun onLost(ws: WebSocket) {

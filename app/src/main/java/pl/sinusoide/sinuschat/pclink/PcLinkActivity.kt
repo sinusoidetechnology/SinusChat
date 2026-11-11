@@ -43,6 +43,17 @@ class PcLinkActivity : AppCompatActivity() {
     private lateinit var wifiWarning: TextView
     private lateinit var waitingRow: LinearLayout
     private lateinit var addButton: TextView
+    private lateinit var addressBox: LinearLayout
+    private lateinit var addressText: TextView
+    private lateinit var batteryCard: LinearLayout
+    private lateinit var lanCard: LinearLayout
+    private val lanLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+        PcLinkServer.retryLocalNetwork()
+        listCard.postDelayed({
+            if (!isFinishing && LocalNetworkAccess.blocked(this)) openAppSettings()
+            refresh()
+        }, 600L)
+    }
 
     private var waitingFor: ByteArray? = null
     private val waitTimeout = Runnable { onPairingTimeout() }
@@ -58,6 +69,23 @@ class PcLinkActivity : AppCompatActivity() {
     private val scanLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val text = result.data?.getStringExtra("qr_result")
         if (result.resultCode == RESULT_OK && text != null) onScanned(text)
+    }
+
+    private val nearbyLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+        PcProximity.refresh(this)
+    }
+
+    private fun askNearby(i: Intent?) {
+        if (i?.getBooleanExtra(PcProximity.EXTRA_ASK, false) != true) return
+        i.removeExtra(PcProximity.EXTRA_ASK)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S && !PcProximity.hasPermission(this)) {
+            nearbyLauncher.launch(android.Manifest.permission.BLUETOOTH_ADVERTISE)
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        askNearby(intent)
     }
 
     private fun attr(id: Int, fallback: Int): Int = ThemeUi.attrOrNull(this, id) ?: fallback
@@ -79,11 +107,20 @@ class PcLinkActivity : AppCompatActivity() {
 
         PcLinkServer.init(this)
         buildUi()
+        askNearby(intent)
     }
 
     override fun onStart() {
         super.onStart()
         PcLinkServer.addListener(changed)
+        PcLinkServer.resume()
+        refresh()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (LocalNetworkAccess.applies()) PcLinkServer.retryLocalNetwork()
+        if (ignoringBattery()) PcLinkService.update(this)
         refresh()
     }
 
@@ -148,6 +185,12 @@ class PcLinkActivity : AppCompatActivity() {
             visibility = View.GONE
         }
         content.addView(wifiWarning)
+
+        lanCard = localNetworkHint()
+        content.addView(lanCard, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (14 * dp).toInt() })
+
+        batteryCard = batteryHint()
+        content.addView(batteryCard, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (14 * dp).toInt() })
 
         content.addView(sectionTitle(getString(R.string.pclink_section)))
         listCard = card()
@@ -214,12 +257,130 @@ class PcLinkActivity : AppCompatActivity() {
             textSize = 14f; setTextColor(cPrimary)
         })
         hero.addView(waitingRow)
+        addressBox = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(0, (16 * dp).toInt(), 0, 0)
+            visibility = View.GONE
+        }
+        addressText = TextView(this).apply {
+            textSize = 14f; setTextColor(cPrimary); gravity = Gravity.CENTER
+            setTextIsSelectable(true)
+        }
+        addressBox.addView(addressText)
+        addressBox.addView(TextView(this).apply {
+            text = getString(R.string.pclink_address_hint)
+            textSize = 12f; setTextColor(cSecondary); gravity = Gravity.CENTER
+            setPadding(0, (2 * dp).toInt(), 0, 0)
+        })
+        hero.addView(addressBox, LinearLayout.LayoutParams(-1, -2))
         return hero
+    }
+
+    private fun batteryHint(): LinearLayout {
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = rounded(cCard, 18f)
+            setPadding((16 * dp).toInt(), (14 * dp).toInt(), (16 * dp).toInt(), (14 * dp).toInt())
+            visibility = View.GONE
+        }
+        val head = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        head.addView(iconTile(R.drawable.ic_timer, cOrange))
+        head.addView(TextView(this).apply {
+            text = getString(R.string.pclink_battery_title)
+            textSize = 15f; setTextColor(cPrimary); typeface = Typeface.DEFAULT_BOLD
+        }, LinearLayout.LayoutParams(0, -2, 1f))
+        box.addView(head)
+        box.addView(TextView(this).apply {
+            text = getString(R.string.pclink_battery_desc)
+            textSize = 13f; setTextColor(cSecondary)
+            setPadding(0, (8 * dp).toInt(), 0, (12 * dp).toInt())
+        })
+        box.addView(TextView(this).apply {
+            text = getString(R.string.pclink_battery_allow)
+            textSize = 14f; setTextColor(Color.WHITE); typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            background = rounded(cAccent, 12f)
+            setPadding((16 * dp).toInt(), (10 * dp).toInt(), (16 * dp).toInt(), (10 * dp).toInt())
+            isClickable = true
+            setOnClickListener { askBatteryExemption() }
+        }, LinearLayout.LayoutParams(-1, -2))
+        return box
+    }
+
+    private fun localNetworkHint(): LinearLayout {
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = rounded(cCard, 18f)
+            setPadding((16 * dp).toInt(), (14 * dp).toInt(), (16 * dp).toInt(), (14 * dp).toInt())
+            visibility = View.GONE
+        }
+        val head = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        head.addView(iconTile(R.drawable.ic_nearby, cRed))
+        head.addView(TextView(this).apply {
+            text = getString(R.string.pclink_lan_title)
+            textSize = 15f; setTextColor(cPrimary); typeface = Typeface.DEFAULT_BOLD
+        }, LinearLayout.LayoutParams(0, -2, 1f))
+        box.addView(head)
+        box.addView(TextView(this).apply {
+            text = getString(R.string.pclink_lan_desc)
+            textSize = 13f; setTextColor(cSecondary)
+            setPadding(0, (8 * dp).toInt(), 0, (12 * dp).toInt())
+        })
+        box.addView(TextView(this).apply {
+            text = getString(R.string.pclink_lan_allow)
+            textSize = 14f; setTextColor(Color.WHITE); typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            background = rounded(cAccent, 12f)
+            setPadding((16 * dp).toInt(), (10 * dp).toInt(), (16 * dp).toInt(), (10 * dp).toInt())
+            isClickable = true
+            setOnClickListener { askLocalNetwork() }
+        }, LinearLayout.LayoutParams(-1, -2))
+        return box
+    }
+
+    private fun askLocalNetwork() {
+        if (ContextCompat.checkSelfPermission(this, LocalNetworkAccess.PERMISSION) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            lanLauncher.launch(LocalNetworkAccess.PERMISSION)
+        } else {
+            openAppSettings()
+        }
+    }
+
+    private fun openAppSettings() {
+        runCatching {
+            startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.fromParts("package", packageName, null)))
+        }
+    }
+
+    private fun ignoringBattery(): Boolean =
+        getSystemService(android.os.PowerManager::class.java)?.isIgnoringBatteryOptimizations(packageName) ?: true
+
+    private fun askBatteryExemption() {
+        val intent = Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+            android.net.Uri.parse("package:$packageName"))
+        try {
+            startActivity(intent)
+        } catch (_: Exception) {
+            try { startActivity(Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) } catch (_: Exception) {}
+        }
     }
 
     private fun refresh() {
         if (isFinishing || isDestroyed) return
         wifiWarning.visibility = if (PcLinkServer.isOnWifi()) View.GONE else View.VISIBLE
+        val address = PcLinkServer.listenAddress()
+        addressBox.visibility = if (address != null) View.VISIBLE else View.GONE
+        if (address != null) addressText.text = getString(R.string.pclink_address, address)
+        val needsBattery = PcLinkStore.pcs(this).isNotEmpty() && !ignoringBattery()
+        batteryCard.visibility = if (needsBattery) View.VISIBLE else View.GONE
+        lanCard.visibility = if (LocalNetworkAccess.blocked(this)) View.VISIBLE else View.GONE
 
         val waiting = waitingFor
         if (waiting != null && PcLinkStore.find(this, waiting) != null) {

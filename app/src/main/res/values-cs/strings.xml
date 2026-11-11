@@ -183,6 +183,10 @@
     <string name="view_once_already_opened">Tento soubor už byl otevřen a smazán</string>
     <string name="view_once_not_in_groups">Jednorázové soubory fungují jen v soukromých konverzacích</string>
     <string name="view_once_media_only">Jednorázově lze odeslat jen fotky a videa</string>
+    <string name="original_quality">Původní kvalita</string>
+    <string name="original_quality_on">Původní kvalita: odešle se bez komprese v plném rozlišení</string>
+    <string name="original_quality_off">Standardní kvalita: menší soubor, rychlejší odeslání</string>
+    <string name="transfer_speed_eta">%1$s/s · zbývá %2$s</string>
     <string name="error_connection">Chyba připojení</string>
     <string name="error_sending">Chyba odesílání</string>
     <string name="error_rename">Chyba přejmenování</string>
@@ -208,6 +212,8 @@
     <string name="notif_bg_listening">Naslouchání zprávám</string>
     <string name="notif_bg_offline">Režim offline</string>
     <string name="notif_bg_checking">Kontrola nových zpráv</string>
+    <string name="bg_data_off_title">Data na pozadí jsou vypnutá</string>
+    <string name="bg_data_off_text">Zprávy dorazí až po otevření SinusChatu. Klepnutím povolíte data na pozadí.</string>
     <string name="notif_added_to_group_format">Přidáno do skupiny: %s</string>
     <string name="account">Účet</string>
     <string name="account_sub">Správa účtu</string>
@@ -348,6 +354,7 @@
     <string name="session_moved_title">Relace přesunuta</string>
     <string name="session_moved_desc">Váš účet je teď aktivní na novém zařízení. Toto zařízení bylo bezpečně odhlášeno — vaše data jsou v pořádku.</string>
     <string name="session_moved_hint">Pokud jste se nepřihlašovali vy, změňte heslo ke své e-mailové schránce.</string>
+    <string name="session_moved_check_failed">Relaci se nepodařilo ověřit. Zkontrolujte internet a zkuste to znovu.</string>
     <string name="session_moved_cd">Relace přesunuta na jiné zařízení</string>
     <string name="app_theme_title">MOTIV APLIKACE</string>
     <string name="themes_title">Motivy</string>
@@ -443,6 +450,10 @@
     <string name="disappearing_trigger_received">Od doručení</string>
     <string name="last_seen_prefix">Naposledy aktivní </string>
     <string name="just_now">právě teď</string>
+    <string name="last_seen_short">Aktivní %1$s</string>
+    <string name="ago_min_short">před %1$d min</string>
+    <string name="ago_hour_short">před %1$d h</string>
+    <string name="ago_month_short">před %1$d měs.</string>
     <string name="peer_screenshot_attempt">Protějšek se pokusil pořídit snímek obrazovky</string>
     <plurals name="files_plural">
         <item quantity="one">soubor</item>
@@ -891,6 +902,11 @@
     <string name="call_remote_video_on">%1$s zapnul(a) kameru</string>
     <string name="call_turn_on_my_camera">Zapnout moji</string>
     <string name="call_camera_permission">Chybí přístup k fotoaparátu</string>
+    <string name="call_route_phone">Telefon</string>
+    <string name="call_route_speaker">Reproduktor</string>
+    <string name="call_route_bluetooth">Bluetooth</string>
+    <string name="call_camera_failed">Kameru se nepodařilo zapnout</string>
+    <string name="peer_screenshot_attempt_call">Protějšek se během hovoru pokusil pořídit snímek obrazovky</string>
     <string name="call_video_busy">Chvíli počkejte a zkuste to znovu</string>
     <string name="lock_pin_placeholder">Zadejte PIN</string>
     <string name="lock_show_dots">Zobrazovat tečky PINu</string>
@@ -2064,4 +2080,22 @@
     <string name="retro_login_hint">Pro začátek zadejte svůj PIN</string>
     <string name="draft_prefix">Koncept:</string>
     <string name="lang_chinese_trad">Tradiční čínština</string>
+    <string name="report_title_desktop">Nahlásit problém Desktop</string>
+    <string name="report_hero_title_desktop">Pomozte vylepšit SinusChat-Desktop</string>
+    <string name="report_diag_desc_desktop">Verze, počítač, připojení k telefonu a nastavení aplikace pro počítač. Bez zpráv a kontaktů.</string>
+    <string name="report_diag_waiting">Odesílám diagnostická data do telefonu…</string>
+    <string name="report_diag_pc_failed">Diagnostická data z počítače se nepodařilo získat. Zkontrolujte, zda je počítač připojen, nebo vypněte připojení dat.</string>
+    <string name="report_platform_desktop">Počítač</string>
+    <string name="report_sending_app">Odesílání hlášení: %1$s</string>
+    <string name="updater_github">Ještě není v Google Play? Stáhněte ji z GitHubu</string>
+    <string name="terms_update_title">Aktualizovali jsme podmínky</string>
+    <string name="terms_update_desc">Změnili jsme podmínky služby, zásady ochrany soukromí nebo licenci. Abyste mohli SinusChat dál používat, přečtěte si nové podmínky a potvrďte, že je přijímáte.</string>
+    <string name="terms_update_date">Platí od %1$s</string>
+    <string name="terms_update_accept">Přijímám</string>
+    <string name="terms_update_decline">Nepřijímám</string>
+    <string name="terms_update_declined">Bez přijetí nových podmínek nemůžete SinusChat používat. Kdykoli se sem můžete vrátit a přijmout je.</string>
+    <string name="terms_update_close">Zavřít aplikaci</string>
+    <string name="avatar_download">Stáhnout</string>
+    <string name="avatar_saved">Fotka uložena do složky %1$s</string>
+    <string name="avatar_save_failed">Fotku se nepodařilo uložit</string>
 </resources>

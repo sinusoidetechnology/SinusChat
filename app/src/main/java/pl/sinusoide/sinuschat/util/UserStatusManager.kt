@@ -15,16 +15,24 @@ object UserStatusManager {
 
     private const val HEARTBEAT_INTERVAL_MS = 15_000L
     private const val RETRY_INTERVAL_MS     = 5_000L
+    private const val SEEN_PREFS = "sinuschat_activity_day"
+    private const val KEY_SEEN = "seen"
+    private const val SEEN_SAVE_EVERY_MS = 60_000L
+    @Volatile private var seenSavedAt = 0L
 
     private var myHash: String = ""
     private var appContext: android.content.Context? = null
 
     @Volatile private var running = false
+    @Volatile private var remote = false
     private val active = java.util.concurrent.atomic.AtomicBoolean(false)
 
     val isActive: Boolean get() = active.get()
 
+    val isRemoteActive: Boolean get() = remote
+
     fun takeActive(): Boolean {
+        if (remote) return false
         val was = active.getAndSet(false)
         if (was) stopLoop()
         return was
@@ -91,8 +99,26 @@ object UserStatusManager {
         onForeground(context)
     }
 
+    fun setRemoteActive(context: android.content.Context?, on: Boolean) {
+        ensureReady(context)
+        if (remote == on) return
+        remote = on
+        if (on) {
+            pl.sinusoide.sinuschat.network.WebSocketManager.resumePing()
+            if (hidden()) {
+                touchActiveDay()
+                return
+            }
+            if (active.compareAndSet(false, true)) startLoop()
+            return
+        }
+        if (pl.sinusoide.sinuschat.SinusApp.isForeground) return
+        onBackground(null)
+    }
+
     fun onBackground(context: android.content.Context? = null) {
         ensureReady(context)
+        if (remote) return
         stopLoop()
         pl.sinusoide.sinuschat.network.WebSocketManager.stopPing()
         val wasActive = active.getAndSet(false)
@@ -138,6 +164,24 @@ object UserStatusManager {
         }
     }
 
+    fun resendAfterServerStart(context: android.content.Context?) {
+        ensureReady(context)
+        val ctx = appContext ?: return
+        if (myHash.isEmpty() || hidden()) return
+        if (active.get()) {
+            handler.post { writeHeartbeat() }
+            return
+        }
+        val seen = ctx.getSharedPreferences(SEEN_PREFS, android.content.Context.MODE_PRIVATE).getLong(KEY_SEEN, 0L)
+        if (seen <= 0L) return
+        handler.post { ApiClient.post("/api/heartbeat", body(0L, seen), ctx) }
+    }
+
+    private fun saveSeen(ctx: android.content.Context, at: Long) {
+        seenSavedAt = at
+        ctx.getSharedPreferences(SEEN_PREFS, android.content.Context.MODE_PRIVATE).edit().putLong(KEY_SEEN, at).apply()
+    }
+
     private fun body(heartbeatMs: Long, lastSeenMs: Long) = JSONObject()
         .put("heartbeatMs", heartbeatMs)
         .put("lastSeenMs", lastSeenMs)
@@ -151,6 +195,7 @@ object UserStatusManager {
         val now = System.currentTimeMillis()
         val ok = ApiClient.post("/api/heartbeat", body(now, now), ctx) != null
         if (!ok) Log.w(TAG, "heartbeat nie doszedł — ponowię za ${RETRY_INTERVAL_MS}ms")
+        else if (now - seenSavedAt >= SEEN_SAVE_EVERY_MS) saveSeen(ctx, now)
         return ok
     }
 
@@ -158,6 +203,8 @@ object UserStatusManager {
         ensureReady(null)
         val ctx = appContext ?: return
         if (myHash.isEmpty()) return
-        ApiClient.post("/api/heartbeat", body(0L, System.currentTimeMillis()), ctx)
+        val now = System.currentTimeMillis()
+        saveSeen(ctx, now)
+        ApiClient.post("/api/heartbeat", body(0L, now), ctx)
     }
 }

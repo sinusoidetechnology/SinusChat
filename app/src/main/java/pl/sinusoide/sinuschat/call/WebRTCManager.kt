@@ -37,6 +37,19 @@ class WebRTCManager(
         private set
     var isCameraEnabled = isVideoCall
         private set
+    var frontFacing = true
+        private set
+    @Volatile private var cameraBroken = false
+    private var lastCameraRestart = 0L
+
+    private val cameraEvents = object : CameraVideoCapturer.CameraEventsHandler {
+        override fun onCameraError(error: String?) { Log.w(TAG, "camera error: $error"); cameraBroken = true }
+        override fun onCameraDisconnected() { Log.w(TAG, "camera disconnected"); cameraBroken = true }
+        override fun onCameraFreezed(error: String?) { Log.w(TAG, "camera frozen: $error"); cameraBroken = true }
+        override fun onCameraOpening(name: String?) {}
+        override fun onFirstFrameAvailable() { cameraBroken = false }
+        override fun onCameraClosed() {}
+    }
 
     companion object {
         @Volatile private var globalInitDone = false
@@ -198,9 +211,11 @@ class WebRTCManager(
 
     private fun createCameraCapturer(): VideoCapturer? {
         val enumerator = Camera2Enumerator(context)
-        return enumerator.deviceNames.firstOrNull { enumerator.isFrontFacing(it) }
-            ?.let { enumerator.createCapturer(it, null) }
-            ?: enumerator.deviceNames.firstOrNull()?.let { enumerator.createCapturer(it, null) }
+        val names = enumerator.deviceNames
+        val name = names.firstOrNull { enumerator.isFrontFacing(it) == frontFacing } ?: names.firstOrNull() ?: return null
+        frontFacing = enumerator.isFrontFacing(name)
+        cameraBroken = false
+        return enumerator.createCapturer(name, cameraEvents)
     }
 
     fun attachLocalVideo(renderer: VideoSink) {
@@ -275,14 +290,30 @@ class WebRTCManager(
     }
 
     fun toggleCamera(): Boolean {
-        isCameraEnabled = !isCameraEnabled
-        if (isCameraEnabled && videoCapturer == null) startCamera()
-        localVideoTrack?.setEnabled(isCameraEnabled)
+        if (isCameraEnabled) {
+            isCameraEnabled = false
+            localVideoTrack?.setEnabled(false)
+            if (!isScreenSharing) stopCapturer()
+        } else {
+            isCameraEnabled = startCamera()
+            localVideoTrack?.setEnabled(isCameraEnabled)
+        }
         return isCameraEnabled
+    }
+
+    fun ensureCamera(): Boolean {
+        if (!isCameraEnabled || isScreenSharing || localVideoTrack == null) return false
+        if (videoCapturer != null && !cameraBroken) return false
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now - lastCameraRestart < 3000) return false
+        lastCameraRestart = now
+        Log.d(TAG, "Restart kamery")
+        return startCamera()
     }
 
     private fun startCamera(): Boolean {
         val source = videoSource ?: return false
+        stopCapturer()
         val camera = createCameraCapturer() ?: return false
         return try {
             camera.initialize(helper(), context, source.capturerObserver)
@@ -362,7 +393,10 @@ class WebRTCManager(
 
     fun switchCamera(onSwitched: ((Boolean) -> Unit)? = null) {
         (videoCapturer as? CameraVideoCapturer)?.switchCamera(object : CameraVideoCapturer.CameraSwitchHandler {
-            override fun onCameraSwitchDone(isFrontCamera: Boolean) { onSwitched?.invoke(isFrontCamera) }
+            override fun onCameraSwitchDone(isFrontCamera: Boolean) {
+                frontFacing = isFrontCamera
+                onSwitched?.invoke(isFrontCamera)
+            }
             override fun onCameraSwitchError(error: String?) { Log.w(TAG, "switchCamera: $error") }
         })
     }
