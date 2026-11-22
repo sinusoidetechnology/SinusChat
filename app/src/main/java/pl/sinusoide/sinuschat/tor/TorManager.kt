@@ -22,6 +22,11 @@ object TorManager {
     @Volatile var isReady: Boolean = false
         private set
 
+    @Volatile var viaOrbot: Boolean = false
+        private set
+
+    private var orbotWatch: Runnable? = null
+
     @Volatile private var starting = false
     @Volatile private var running = false
     @Volatile private var desiredOn = false
@@ -143,38 +148,21 @@ object TorManager {
                 Log.w("TorManager", "Tor wyłączony przez SafeEngine")
                 return
             }
-            if (startedInProcess) {
-                if (endedInProcess) restartProcess(app)
-                return
-            }
-            if (!receiverRegistered) {
-                ContextCompat.registerReceiver(
-                    app, statusReceiver,
-                    IntentFilter(TorService.ACTION_STATUS),
-                    ContextCompat.RECEIVER_NOT_EXPORTED
-                )
-                receiverRegistered = true
-            }
             starting = true
-            try {
-                pl.sinusoide.sinuschat.util.SafeMode.begin(app, pl.sinusoide.sinuschat.util.SafeMode.Part.TOR)
-                app.startService(Intent(app, SinusTorService::class.java))
-                startedInProcess = true
-                mainHandler.postDelayed({
-                    if (desiredOn && !running && !endedInProcess) {
-                        torActive = true
-                        starting = false
-                        running = true
-                        TorCircuits.attach(app)
-                        waitReady()
-                    }
-                }, 5_000L)
-            } catch (t: Throwable) {
-                Log.e("TorManager", "Nie udało się wystartować TorService", t)
-                starting = false
-            }
+            Thread({
+                val orbot = OrbotTor.available(app)
+                mainHandler.post {
+                    starting = false
+                    if (!desiredOn || running) return@post
+                    if (orbot) useOrbot(app) else startEmbedded(app)
+                }
+            }, "tor-orbot-check").start()
+        } else if (desiredOn && running && !starting && !isReady && viaOrbot) {
+            fireReady()
         } else if (desiredOn && running && !starting && !isReady) {
             waitReady()
+        } else if (!desiredOn && running && !starting && viaOrbot) {
+            stopOrbot()
         } else if (!desiredOn && running && !starting) {
             running = false
             endedInProcess = true
@@ -186,6 +174,84 @@ object TorManager {
             runCatching { app.stopService(Intent(app, SinusTorService::class.java)) }
         } else if (!desiredOn && starting) {
             Log.d("TorManager", "stop w trakcie rozruchu — odłożone do STATUS_ON")
+        }
+    }
+
+    private fun useOrbot(app: Context) {
+        Log.i("TorManager", "Orbot działa, używam jego Tora")
+        viaOrbot = true
+        running = true
+        torActive = true
+        socksPort = OrbotTor.SOCKS_PORT
+        TorCircuits.lastProgress = 100
+        fireReady()
+        watchOrbot(app)
+    }
+
+    private fun stopOrbot() {
+        orbotWatch?.let { mainHandler.removeCallbacks(it) }
+        orbotWatch = null
+        viaOrbot = false
+        running = false
+        torActive = false
+        TorCircuits.lastProgress = null
+    }
+
+    private fun watchOrbot(app: Context) {
+        orbotWatch?.let { mainHandler.removeCallbacks(it) }
+        val r = object : Runnable {
+            override fun run() {
+                if (!viaOrbot) return
+                Thread({
+                    val alive = OrbotTor.socksAlive()
+                    mainHandler.post {
+                        if (!viaOrbot) return@post
+                        if (alive) {
+                            mainHandler.postDelayed(this, 15_000L)
+                        } else {
+                            Log.w("TorManager", "Orbot przestał działać, uruchamiam wbudowany Tor")
+                            synchronized(this@TorManager) { isReady = false }
+                            stopOrbot()
+                            if (desiredOn) startEmbedded(app)
+                        }
+                    }
+                }, "tor-orbot-watch").start()
+            }
+        }
+        orbotWatch = r
+        mainHandler.postDelayed(r, 15_000L)
+    }
+
+    private fun startEmbedded(app: Context) {
+        if (startedInProcess) {
+            if (endedInProcess) restartProcess(app)
+            return
+        }
+        if (!receiverRegistered) {
+            ContextCompat.registerReceiver(
+                app, statusReceiver,
+                IntentFilter(TorService.ACTION_STATUS),
+                ContextCompat.RECEIVER_NOT_EXPORTED
+            )
+            receiverRegistered = true
+        }
+        starting = true
+        try {
+            pl.sinusoide.sinuschat.util.SafeMode.begin(app, pl.sinusoide.sinuschat.util.SafeMode.Part.TOR)
+            app.startService(Intent(app, SinusTorService::class.java))
+            startedInProcess = true
+            mainHandler.postDelayed({
+                if (desiredOn && !running && !endedInProcess) {
+                    torActive = true
+                    starting = false
+                    running = true
+                    TorCircuits.attach(app)
+                    waitReady()
+                }
+            }, 5_000L)
+        } catch (t: Throwable) {
+            Log.e("TorManager", "Nie udało się wystartować TorService", t)
+            starting = false
         }
     }
 }

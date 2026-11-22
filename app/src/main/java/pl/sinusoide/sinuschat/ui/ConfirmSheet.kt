@@ -25,7 +25,8 @@ object ConfirmSheet {
         confirm: String,
         confirmIcon: Int = icon,
         onConfirm: () -> Unit,
-        onCancel: () -> Unit = {}
+        onCancel: () -> Unit = {},
+        dismiss: String? = null
     ) {
         if (activity.isFinishing || activity.isDestroyed) return
         val d = activity.resources.displayMetrics.density
@@ -92,7 +93,7 @@ object ConfirmSheet {
             }
         }, LinearLayout.LayoutParams(-1, -2))
         root.addView(TextView(activity).apply {
-            text = activity.getString(R.string.cancel)
+            text = dismiss ?: activity.getString(R.string.cancel)
             textSize = 15f; setTextColor(ThemeUi.textSecondary(activity)); gravity = Gravity.CENTER
             setPadding(0, (14 * d).toInt(), 0, (4 * d).toInt())
             isClickable = true

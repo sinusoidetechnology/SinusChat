@@ -61,6 +61,7 @@ object GroupCallHub {
         when (msg.optString("type")) {
             "gcall_state" -> onState(context.applicationContext, groupId, msg)
             "gcall_signal" -> {
+                if (pl.sinusoide.sinuschat.pclink.PcLinkGroupCalls.onServerSignal(groupId, msg.optString("from"), msg.optString("payload"))) return
                 val session = GroupCallSession.current
                 if (session != null && session.groupId == groupId) {
                     AppExecutor.main { session.onSignal(msg.optString("from"), msg.optString("payload")) }
@@ -70,6 +71,7 @@ object GroupCallHub {
                 }
             }
             "gcall_error" -> {
+                if (pl.sinusoide.sinuschat.pclink.PcLinkGroupCalls.onServerError(groupId, msg.optString("reason"))) return
                 val session = GroupCallSession.current
                 if (session != null && session.groupId == groupId) AppExecutor.main { session.onError(msg.optString("reason")) }
             }
@@ -91,6 +93,7 @@ object GroupCallHub {
         if (session != null && session.groupId == groupId) AppExecutor.main { session.onState(if (active) state else null) }
 
         val ringing = GroupCallRing.isRinging(groupId)
+        var ringFor = 0L
         if (!active || me in members) {
             if (ringing) GroupCallRing.stop(context, groupId)
         } else {
@@ -99,7 +102,8 @@ object GroupCallHub {
             if (fresh && state.startedBy != me && key !in rung && session == null &&
                 !pl.sinusoide.sinuschat.util.BlockList.isBlocked(context, state.startedBy)) {
                 rung.add(key)
-                GroupCallRing.start(context, state, RING_WINDOW_MS - (serverNow - startedAt))
+                ringFor = RING_WINDOW_MS - (serverNow - startedAt)
+                GroupCallRing.start(context, state, ringFor)
             }
         }
         if (!active && previous != null && logged.add("$groupId@${previous.startedAt}")) {
@@ -108,6 +112,7 @@ object GroupCallHub {
                 pl.sinusoide.sinuschat.messenger.MessageRepository.insertSystemMessage(context, groupId, label, "call_done")
             }
         }
+        pl.sinusoide.sinuschat.pclink.PcLinkGroupCalls.onHubState(context, groupId, if (active) state else null, ringFor)
         if (!active && previous == null && !ringing) return
         notifyListeners(groupId)
     }

@@ -24,7 +24,6 @@
     <string name="forward_unsafe">Цим файлом не можна поділитися</string>
     <string name="forward_setup_first">Спершу налаштуйте SinusChat</string>
     <string name="forward_blocked_row">Заблокований контакт</string>
-    <string name="forward_voice_no_groups">Голосові можна пересилати лише в розмову 1:1</string>
     <string name="forward_fail_generic">не вдалося надіслати</string>
     <string name="forward_fail_blocked">цей контакт заблоковано</string>
     <string name="forward_fail_upload">не вдалося завантажити файл</string>

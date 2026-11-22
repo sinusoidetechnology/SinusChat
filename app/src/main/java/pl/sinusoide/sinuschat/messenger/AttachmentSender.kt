@@ -85,7 +85,7 @@ object AttachmentSender {
                 type = MessageEntity.TYPE_ATTACHMENT,
                 fileId = "",
                 fileKey = null,
-                attachmentName = nameFor(app, item, now + i),
+                attachmentName = nameFor(app, item, now + i, if (items.size > 1) i + 1 else 0),
                 viewOnce = item.viewOnce,
                 albumId = if (item.kind == Kind.IMAGE && !item.viewOnce) albumId else null,
                 text = if (withCaption) caption!!.text else "",
@@ -251,7 +251,12 @@ object AttachmentSender {
             if (st.cancelled) return
             if (result == null) {
                 Log.w(TAG, "Wysyłka ${msg.id.take(8)}: upload nieudany (${payload.length() / 1024} KB)")
-                fail(app, msg, app.getString(R.string.upload_error)); return
+                fail(app, msg, app.getString(when (FileUploader.takeRefusal()) {
+                    "storage_full" -> R.string.upload_server_full
+                    "daily_limit" -> R.string.upload_daily_limit
+                    "too_large" -> R.string.file_too_large_150
+                    else -> R.string.upload_error
+                })); return
             }
 
             val done = msg.copy(fileId = result.fileId, fileKey = result.fileKey, status = MessageEntity.STATUS_PENDING)
@@ -350,9 +355,10 @@ object AttachmentSender {
         if (file.parentFile?.canonicalPath == keyboardDir(ctx).canonicalPath) file.delete()
     }
 
-    private fun nameFor(ctx: Context, item: Item, ts: Long): String {
+    private fun nameFor(ctx: Context, item: Item, ts: Long, index: Int = 0): String {
         val mime = item.mime ?: try { ctx.contentResolver.getType(item.uri) } catch (_: Exception) { null }.orEmpty()
-        val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date(ts))
+        val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date(ts)) +
+            (if (index > 0) "_" + index.toString().padStart(2, '0') else "")
         return when (item.kind) {
             Kind.IMAGE -> when {
                 mime == "image/png" -> "IMG_$stamp.png"

@@ -79,7 +79,8 @@ class JuggleIconView @JvmOverloads constructor(
     override fun onDraw(canvas: Canvas) {
         if (width == 0) return
         if (startNs == 0L) startNs = System.nanoTime()
-        val ms = (System.nanoTime() - startNs) / 1_000_000f
+        val still = A11y.reducedMotion(context)
+        val ms = if (still) START_MS.toFloat() else (System.nanoTime() - startNs) / 1_000_000f
 
         val intro = (ms / 450f).coerceIn(0f, 1f)
         val introScale = 0.82f + 0.18f * pop.getInterpolation(intro)
@@ -120,7 +121,7 @@ class JuggleIconView @JvmOverloads constructor(
         }
         canvas.restore()
 
-        if (isShown) postInvalidateOnAnimation()
+        if (isShown && !still) postInvalidateOnAnimation()
     }
 
     override fun onVisibilityAggregated(isVisible: Boolean) {

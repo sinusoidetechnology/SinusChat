@@ -19,11 +19,12 @@ class RetroCheckDrawable(private val density: Float) : Drawable() {
     }
     private val tick = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        strokeCap = Paint.Cap.SQUARE
-        strokeJoin = Paint.Join.MITER
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
         color = CHECK
     }
     private val box = RectF()
+    private val inner = RectF()
     private val path = Path()
     private var checked = false
     private var enabled = true
@@ -53,21 +54,27 @@ class RetroCheckDrawable(private val density: Float) : Drawable() {
         val top = b.exactCenterY() - side / 2f
         val sw = density.coerceAtLeast(1f)
         box.set(left + sw / 2f, top + sw / 2f, left + side - sw / 2f, top + side - sw / 2f)
-        val from = if (pressed) 0xFFB9CBE6.toInt() else 0xFFDCE4EE.toInt()
-        fill.shader = LinearGradient(box.left, box.top, box.right, box.bottom,
-            from, 0xFFFFFFFF.toInt(), Shader.TileMode.CLAMP)
         val a = if (enabled) alphaValue else alphaValue / 2
         fill.alpha = a; border.alpha = a; tick.alpha = a
         border.strokeWidth = sw
+        fill.shader = LinearGradient(0f, box.top, 0f, box.bottom,
+            if (pressed) 0xFFBCE4F9.toInt() else 0xFFDCDCDC.toInt(), 0xFFFFFFFF.toInt(), Shader.TileMode.CLAMP)
         canvas.drawRect(box, fill)
+        val inset = 2.5f * sw
+        inner.set(box.left + inset, box.top + inset, box.right - inset, box.bottom - inset)
+        fill.shader = LinearGradient(0f, inner.top, 0f, inner.bottom,
+            if (pressed) 0xFFC4E5F6.toInt() else 0xFFE6E6E6.toInt(), if (pressed) 0xFFE5F4FC.toInt() else 0xFFF8F8F8.toInt(),
+            Shader.TileMode.CLAMP)
+        canvas.drawRect(inner, fill)
+        border.color = if (pressed) PRESSED_BORDER else BORDER
         canvas.drawRect(box, border)
         if (!checked) return
         val u = side / 13f
-        tick.strokeWidth = 2f * u
+        tick.strokeWidth = 1.8f * u
         path.reset()
-        path.moveTo(left + 3.5f * u, top + 6.5f * u)
-        path.lineTo(left + 5.5f * u, top + 8.5f * u)
-        path.lineTo(left + 9.5f * u, top + 4.5f * u)
+        path.moveTo(left + 3.4f * u, top + 6.6f * u)
+        path.lineTo(left + 5.6f * u, top + 9.0f * u)
+        path.lineTo(left + 9.8f * u, top + 3.8f * u)
         canvas.drawPath(path, tick)
     }
 
@@ -77,8 +84,9 @@ class RetroCheckDrawable(private val density: Float) : Drawable() {
     override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
 
     companion object {
-        const val SIZE = 20f
-        const val BORDER = 0xFF1C5180.toInt()
-        const val CHECK = 0xFF21A121.toInt()
+        const val SIZE = 18f
+        const val BORDER = 0xFF8E8F8F.toInt()
+        const val PRESSED_BORDER = 0xFF2C628B.toInt()
+        const val CHECK = 0xFF4A5F97.toInt()
     }
 }

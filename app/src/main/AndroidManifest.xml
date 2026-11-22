@@ -43,6 +43,10 @@
     <uses-feature android:name="android.hardware.nfc" android:required="false" />
     <uses-feature android:name="android.hardware.nfc.hce" android:required="false" />
 
+    <queries>
+        <package android:name="org.torproject.android" />
+    </queries>
+
     <application
         android:name=".SinusApp"
         android:allowBackup="false"
@@ -498,6 +502,9 @@
                 android:resource="@xml/apduservice" />
         </service>
 
+        <receiver
+            android:name=".util.TranslationNotifier$CancelReceiver"
+            android:exported="false" />
     </application>
 
 </manifest>

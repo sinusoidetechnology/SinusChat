@@ -86,7 +86,7 @@ class VideoCompressorTest {
             assertTrue("kompresja uznana za zbędną", VideoCompressor.worthIt(src))
             val started = System.currentTimeMillis()
             var last = 0f
-            val ok = VideoCompressor.compress(ctx, src, dst, { false }) { last = it }
+            val ok = VideoCompressor.compress(ctx, src, dst) { false }
             val took = System.currentTimeMillis() - started
             assertTrue("kompresja nieudana", ok)
             val r = MediaMetadataRetriever()

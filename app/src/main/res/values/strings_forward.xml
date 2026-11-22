@@ -25,7 +25,6 @@
     <string name="forward_unsafe">Tego pliku nie można udostępnić</string>
     <string name="forward_setup_first">Najpierw skonfiguruj SinusChat</string>
     <string name="forward_blocked_row">Zablokowany kontakt</string>
-    <string name="forward_voice_no_groups">Głosówki przekażesz tylko w rozmowie 1:1</string>
     <string name="forward_fail_generic">nie udało się wysłać</string>
     <string name="forward_fail_blocked">ten kontakt jest zablokowany</string>
     <string name="forward_fail_upload">nie udało się wgrać pliku</string>

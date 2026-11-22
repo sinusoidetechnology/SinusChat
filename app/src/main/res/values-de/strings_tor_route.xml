@@ -20,4 +20,5 @@
     <string name="tor_route_distinct_desc">Die Route führt nicht zweimal durch dasselbe Land. Ein zusätzlicher Schutz: Der Aufbau kann etwas länger dauern, und deine Routen ähneln denen anderer Tor-Nutzer etwas weniger.</string>
     <string name="tor_route_footer">Tor behält den Eingangsknoten absichtlich einige Monate, weil das die Verfolgung erschwert. Mittel- und Ausgangsknoten wechseln regelmäßig. Die Länder der Knoten stammen aus der IPFire-Location-Datenbank (CC BY-SA 4.0), die mit Tor ausgeliefert wird.</string>
     <string name="tor_startup_progress">Verbinde mit dem Tor-Netzwerk… %1$d%%</string>
+    <string name="tor_route_orbot">Tor läuft über die App Orbot. Route und Länder der Knoten siehst du in Orbot.</string>
 </resources>

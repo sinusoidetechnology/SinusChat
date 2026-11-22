@@ -24,7 +24,6 @@
     <string name="forward_unsafe">Tento soubor nelze sdílet</string>
     <string name="forward_setup_first">Nejdřív nastavte SinusChat</string>
     <string name="forward_blocked_row">Zablokovaný kontakt</string>
-    <string name="forward_voice_no_groups">Hlasovky přepošlete jen do konverzace 1:1</string>
     <string name="forward_fail_generic">nepodařilo se odeslat</string>
     <string name="forward_fail_blocked">tento kontakt je zablokovaný</string>
     <string name="forward_fail_upload">soubor se nepodařilo nahrát</string>

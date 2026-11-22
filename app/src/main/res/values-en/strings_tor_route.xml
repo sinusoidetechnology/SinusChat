@@ -20,4 +20,5 @@
     <string name="tor_route_distinct_desc">The route won\'t pass through the same country twice. An extra safeguard: connecting may take a bit longer, and your routes will look a little less like those of other Tor users.</string>
     <string name="tor_route_footer">Tor deliberately keeps the entry node for a few months because that makes you harder to track. The middle and exit change regularly. Node countries come from the IPFire Location database (CC BY-SA 4.0) shipped with Tor.</string>
     <string name="tor_startup_progress">Connecting to the Tor network… %1$d%%</string>
+    <string name="tor_route_orbot">Tor is running through the Orbot app. Check the connection route and relay countries in Orbot.</string>
 </resources>

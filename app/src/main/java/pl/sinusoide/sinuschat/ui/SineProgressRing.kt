@@ -17,7 +17,14 @@ class SineProgressRing(context: Context) : View(context) {
     var color: Int = Color.WHITE
         set(value) { field = value; invalidate() }
     var disc: Int = 0x73000000
+    var stopColor: Int = 0
+        set(value) { field = value; invalidate() }
     var showCancel = true
+        set(value) {
+            field = value
+            contentDescription = if (value) context.getString(pl.sinusoide.sinuschat.R.string.cancel) else null
+            invalidate()
+        }
 
     private val d = resources.displayMetrics.density
     private val wave = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -84,7 +91,11 @@ class SineProgressRing(context: Context) : View(context) {
         wave.strokeWidth = stroke
         canvas.drawPath(path, wave)
 
-        if (showCancel) {
+        if (stopColor != 0) {
+            val k = size * 0.12f
+            fill.color = stopColor
+            canvas.drawRoundRect(cx - k, cy - k, cx + k, cy + k, k * 0.3f, k * 0.3f, fill)
+        } else if (showCancel) {
             val k = size * 0.13f
             cross.color = color
             cross.strokeWidth = stroke * 0.9f

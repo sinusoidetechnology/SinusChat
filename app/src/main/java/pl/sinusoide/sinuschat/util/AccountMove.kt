@@ -20,21 +20,111 @@ object AccountMove {
 
     private fun message(oldHash: String, newHash: String) = "SinusChat moved v1|$oldHash|$newHash".toByteArray()
 
-    fun afterEmailChange(ctx: Context, oldHash: String, newHash: String) {
+    private const val PREFS = "account_move"
+    private const val RESEND_GAP_MS = 3_600_000L
+    private val resentTo = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
+    private fun prefs(ctx: Context) = pl.sinusoide.sinuschat.crypto.SecurePrefs.get(ctx, PREFS)
+
+    fun previousHashes(ctx: Context): Set<String> =
+        try { prefs(ctx).getStringSet("prev", emptySet()).orEmpty() } catch (_: Exception) { emptySet() }
+
+    private fun remember(ctx: Context, oldHash: String, newHash: String) {
+        try {
+            val prev = previousHashes(ctx).toMutableSet()
+            prev.add(oldHash)
+            prev.remove(newHash)
+            prefs(ctx).edit().putStringSet("prev", prev).putString("last_old", oldHash)
+                .putString("last_new", newHash).putBoolean("pending", true).apply()
+        } catch (_: Exception) {}
+    }
+
+    fun currentConvId(ctx: Context, convId: String, me: String): String {
+        if (me.isEmpty() || !LocalChats.isDirect(convId)) return convId
+        val parts = convId.split('_')
+        if (parts.size != 2 || me in parts) return convId
+        val prev = previousHashes(ctx)
+        val mine = parts.firstOrNull { it in prev } ?: return convId
+        val other = parts.firstOrNull { it != mine }?.takeIf { it.isNotEmpty() } ?: return convId
+        return MessageRepository.conversationId(me, other)
+    }
+
+    private fun signature(ctx: Context, oldHash: String, newHash: String): String? {
+        val priv = E2EManager.myPrivateKeyBytes(ctx) ?: return null
+        return try { Base64.encodeToString(ECPrivateKey(priv).calculateSignature(message(oldHash, newHash)), Base64.NO_WRAP) }
+        catch (e: Exception) { Log.w(TAG, "Podpis: ${e.message}"); null }
+    }
+
+    fun reannounceTo(ctx: Context, other: String) {
         val app = ctx.applicationContext
-        val contacts = LocalChats.contacts(app, oldHash)
-        val priv = E2EManager.myPrivateKeyBytes(app)
-        val sig = priv?.let {
-            try { Base64.encodeToString(ECPrivateKey(it).calculateSignature(message(oldHash, newHash)), Base64.NO_WRAP) }
-            catch (e: Exception) { Log.w(TAG, "Podpis: ${e.message}"); null }
+        val now = android.os.SystemClock.elapsedRealtime()
+        val last = resentTo[other]
+        if (last != null && now - last < RESEND_GAP_MS) return
+        resentTo[other] = now
+        val p = try { prefs(app) } catch (_: Exception) { return }
+        val oldHash = p.getString("last_old", null) ?: return
+        val newHash = p.getString("last_new", null) ?: return
+        if (newHash != pl.sinusoide.sinuschat.setup.SetupActivity.getUserPhoneHash(app)) return
+        val sig = signature(app, oldHash, newHash) ?: return
+        MessageRepository.sendMovedBlocking(app, MessageRepository.conversationId(newHash, other), newHash, other, oldHash, sig)
+    }
+
+    fun retryPending(ctx: Context) {
+        val app = ctx.applicationContext
+        val p = try { prefs(app) } catch (_: Exception) { return }
+        if (!p.getBoolean("pending", false)) return
+        val oldHash = p.getString("last_old", null) ?: return
+        val newHash = p.getString("last_new", null) ?: return
+        if (newHash != pl.sinusoide.sinuschat.setup.SetupActivity.getUserPhoneHash(app)) {
+            p.edit().putBoolean("pending", false).apply()
+            return
         }
+        announceMove(app, oldHash, newHash, LocalChats.contacts(app, newHash))
+    }
+
+    fun moveLocally(ctx: Context, oldHash: String, newHash: String): List<String> {
+        val app = ctx.applicationContext
+        remember(app, oldHash, newHash)
+        GroupRoster.renameMember(app, oldHash, newHash)
+        val contacts = LocalChats.contacts(app, oldHash)
+        if (pl.sinusoide.sinuschat.BuildConfig.DEBUG) Log.d(TAG, "Przenoszę rozmowy: ${contacts.size}")
         for (other in contacts) {
-            val oldId = MessageRepository.conversationId(oldHash, other)
-            val newId = MessageRepository.conversationId(newHash, other)
-            renameConversation(app, oldId, newId, other)
-            if (sig != null) MessageRepository.sendMovedBlocking(app, newId, newHash, other, oldHash, sig)
+            renameConversation(app, MessageRepository.conversationId(oldHash, other),
+                MessageRepository.conversationId(newHash, other), other)
         }
         renameHashLocally(app, oldHash, newHash)
+        return contacts
+    }
+
+    @Synchronized
+    fun announceMove(ctx: Context, oldHash: String, newHash: String, contacts: List<String>) {
+        val app = ctx.applicationContext
+        UserStatusManager.init(newHash, app)
+        val sig = signature(app, oldHash, newHash) ?: return
+        var allSent = true
+        for (other in contacts) {
+            val ok = try {
+                MessageRepository.sendMovedBlocking(app, MessageRepository.conversationId(newHash, other), newHash, other, oldHash, sig)
+            } catch (_: Exception) { false }
+            if (!ok) allSent = false
+        }
+        if (allSent) try {
+            val p = prefs(app)
+            if (p.getString("last_new", null) == newHash) p.edit().putBoolean("pending", false).apply()
+        } catch (_: Exception) {}
+        if (pl.sinusoide.sinuschat.BuildConfig.DEBUG) Log.d(TAG, "Powiadomienie o przeniesieniu: ${contacts.size} kontaktów, wszystkie wysłane: $allSent")
+    }
+
+    fun afterEmailChange(ctx: Context, oldHash: String, newHash: String) {
+        val app = ctx.applicationContext
+        val contacts = moveLocally(app, oldHash, newHash)
+        announceMove(app, oldHash, newHash, contacts)
+        if (pl.sinusoide.sinuschat.BuildConfig.DEBUG) {
+            val left = try {
+                SinusChatDatabase.getInstance(app).messageDao().getConversationIds().count { it.contains(oldHash) }
+            } catch (_: Exception) { -1 }
+            Log.d(TAG, "Po przeniesieniu zostało rozmów ze starym kontem w bazie: $left")
+        }
     }
 
     fun onMoved(ctx: Context, me: String, newHash: String, payload: JSONObject): Boolean {
@@ -51,6 +141,7 @@ object AccountMove {
         val newId = MessageRepository.conversationId(me, newHash)
         renameConversation(ctx, oldId, newId, newHash)
         renameHashLocally(ctx, oldHash, newHash)
+        for (gid in GroupRoster.groupsOf(ctx, oldHash)) GroupRoster.applyMove(ctx, gid, oldHash, newHash)
         PeerKeyCache.saveKey(ctx, newHash, known)
         SignalStore.get(ctx).renamePeer(oldHash, newHash)
         ProfileCrypto.renameContact(ctx, oldHash, newHash)
@@ -63,8 +154,9 @@ object AccountMove {
         if (oldId == newId) return
         try {
             val db = SinusChatDatabase.getInstance(ctx)
-            db.messageDao().renameConversation(oldId, newId)
+            val moved = db.messageDao().renameConversation(oldId, newId)
             db.callDao().renameConversation(oldId, newId)
+            if (pl.sinusoide.sinuschat.BuildConfig.DEBUG) Log.d(TAG, "Rozmowa ${oldId.takeLast(6)} -> ${newId.takeLast(6)}: wiadomości $moved")
         } catch (e: Exception) { Log.w(TAG, "Baza: ${e.message}") }
         LocalChats.rename(ctx, oldId, newId, newOther)
         renameMediaDir(ctx, oldId, newId)

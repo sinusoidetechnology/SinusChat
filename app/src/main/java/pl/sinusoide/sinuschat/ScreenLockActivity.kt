@@ -271,6 +271,7 @@ class ScreenLockActivity : AppCompatActivity() {
             textSize = 13.5f; setTextColor(cSecondary); gravity = Gravity.CENTER
             typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
             minHeight = (20 * dp).toInt()
+            accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
         }
         content.addView(tvMessage, LinearLayout.LayoutParams(-1, -2).apply {
             topMargin = (12 * dp).toInt(); bottomMargin = (18 * dp).toInt()
@@ -362,6 +363,7 @@ class ScreenLockActivity : AppCompatActivity() {
         tvMessage = TextView(this).apply {
             textSize = 13f; setTextColor(cSecondary); gravity = Gravity.CENTER_VERTICAL
             minHeight = (20 * dp).toInt()
+            accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
         }
         pinField = PinFieldView(this, palette, "", showDots = LockManager.isShowPinDots(this))
     }
@@ -372,20 +374,7 @@ class ScreenLockActivity : AppCompatActivity() {
     }
 
     private fun buildRetroLogin() {
-        val bandDark = 0xFF00309C.toInt()
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            background = GradientDrawable(GradientDrawable.Orientation.TL_BR,
-                intArrayOf(0xFF7AA1E6.toInt(), 0xFF5A7EDC.toInt(), 0xFF5A7EDC.toInt()))
-        }
-        val top = FrameLayout(this).apply { setBackgroundColor(bandDark) }
-        top.addView(View(this), FrameLayout.LayoutParams(-1, (52 * dp).toInt()))
-        root.addView(top, LinearLayout.LayoutParams(-1, -2))
-        root.addView(View(this).apply {
-            background = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
-                intArrayOf(0x005A7EDC, 0xFFFFFFFF.toInt(), 0x005A7EDC))
-        }, LinearLayout.LayoutParams(-1, (2 * dp).toInt()))
-
+        val root = FrameLayout(this).apply { background = pl.sinusoide.sinuschat.ui.Win7LogonDrawable() }
         val scroll = ScrollView(this).apply {
             isFillViewport = true
             isVerticalScrollBarEnabled = false
@@ -394,111 +383,91 @@ class ScreenLockActivity : AppCompatActivity() {
         content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding((22 * dp).toInt(), (18 * dp).toInt(), (22 * dp).toInt(), (14 * dp).toInt())
+            setPadding((22 * dp).toInt(), (24 * dp).toInt(), (22 * dp).toInt(), (16 * dp).toInt())
         }
         scroll.addView(content)
-        root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
+        root.addView(scroll, FrameLayout.LayoutParams(-1, -1))
 
-        val logo = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        logo.addView(ImageView(this).apply { setImageResource(R.mipmap.ic_launcher) },
-            LinearLayout.LayoutParams((58 * dp).toInt(), (58 * dp).toInt()).apply { marginEnd = (12 * dp).toInt() })
-        logo.addView(LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            addView(xpText(getString(R.string.app_name), 30f, Color.WHITE, bold = true).apply {
-                setShadowLayer(3 * dp, 1 * dp, 1 * dp, 0x66000000)
-            })
-            addView(tvDescription.apply { textSize = 14f; setTextColor(Color.WHITE) })
-        })
-        content.addView(logo, LinearLayout.LayoutParams(-2, -2))
-        content.addView(noticeHost, LinearLayout.LayoutParams(-1, -2))
-
-        content.addView(View(this).apply {
-            background = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
-                intArrayOf(0x00FFFFFF, 0xCCFFFFFF.toInt(), 0x00FFFFFF))
-        }, LinearLayout.LayoutParams(-1, (1 * dp).toInt()).apply {
-            topMargin = (18 * dp).toInt(); bottomMargin = (14 * dp).toInt()
-        })
+        val shadowText = { v: TextView -> v.setShadowLayer(5 * dp, 0f, 1 * dp, 0xA0001030.toInt()) }
+        content.addView(View(this), LinearLayout.LayoutParams(1, 0, 1f))
 
         val name = pl.sinusoide.sinuschat.setup.SetupActivity.getUserDisplayName(this)
         val shown = name.ifEmpty { getString(R.string.app_name) }
-        val tile = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            background = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
-                intArrayOf(0xFF1E4FC2.toInt(), 0x335A7EDC)).apply { cornerRadius = 2 * dp }
-            setPadding((8 * dp).toInt(), (8 * dp).toInt(), (8 * dp).toInt(), (8 * dp).toInt())
+        val tile = FrameLayout(this).apply {
+            background = pl.sinusoide.sinuschat.ui.Win7TileDrawable(dp)
+            elevation = 10 * dp
         }
         val avatar = ImageView(this).apply {
             scaleType = ImageView.ScaleType.CENTER_CROP
-            background = GradientDrawable().apply { setColor(Color.WHITE); cornerRadius = 2 * dp }
-            val p = (2 * dp).toInt(); setPadding(p, p, p, p)
+            outlineProvider = object : android.view.ViewOutlineProvider() {
+                override fun getOutline(view: View, outline: android.graphics.Outline) {
+                    outline.setRoundRect(0, 0, view.width, view.height, 4 * dp)
+                }
+            }
+            clipToOutline = true
+            foreground = pl.sinusoide.sinuschat.ui.Win7PictureFrame(dp)
         }
-        tile.addView(avatar, LinearLayout.LayoutParams((60 * dp).toInt(), (60 * dp).toInt()).apply { marginEnd = (12 * dp).toInt() })
+        tile.addView(avatar, FrameLayout.LayoutParams((84 * dp).toInt(), (84 * dp).toInt(), Gravity.CENTER))
         if (!pl.sinusoide.sinuschat.util.AvatarHelper.loadAvatarInto(this, avatar)) {
             pl.sinusoide.sinuschat.util.AvatarHelper.setLetterAvatar(this, avatar, shown,
                 pl.sinusoide.sinuschat.util.AvatarHelper.getMyColor(this))
         }
-        val side = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        side.addView(xpText(shown, 19f, Color.WHITE).apply {
+        content.addView(tile, LinearLayout.LayoutParams((108 * dp).toInt(), (108 * dp).toInt()))
+
+        content.addView(xpText(shown, 24f, Color.WHITE).apply {
+            shadowText(this)
+            gravity = Gravity.CENTER
             maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
-        })
-        side.addView(xpText(getString(R.string.lock_pin_placeholder), 12.5f, 0xFFDCE6F8.toInt()).apply {
-            setPadding(0, (4 * dp).toInt(), 0, (3 * dp).toInt())
-        })
+        }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = (14 * dp).toInt() })
+        content.addView(tvDescription.apply {
+            textSize = 13.5f; setTextColor(0xFFDCEBFA.toInt()); gravity = Gravity.CENTER
+            shadowText(this)
+        }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = (2 * dp).toInt() })
+        content.addView(noticeHost, LinearLayout.LayoutParams(-1, -2))
+
         val fieldRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        fieldRow.addView(pinField, LinearLayout.LayoutParams(0, (32 * dp).toInt(), 1f).apply { marginEnd = (6 * dp).toInt() })
+        fieldRow.addView(pinField, LinearLayout.LayoutParams((220 * dp).toInt(), (30 * dp).toInt()).apply { marginEnd = (8 * dp).toInt() })
         btnNext = TextView(this).apply {
             contentDescription = getString(R.string.next)
-            val arrow = androidx.core.content.ContextCompat.getDrawable(this@ScreenLockActivity, R.drawable.ic_chevron_right)!!.mutate()
-            arrow.setTint(Color.WHITE)
-            val box = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-                intArrayOf(0xFF6CC56C.toInt(), 0xFF3A9E3A.toInt(), 0xFF2E8B2E.toInt())).apply {
-                cornerRadius = 2 * dp
-                setStroke((1 * dp).toInt(), Color.WHITE)
-            }
-            background = android.graphics.drawable.LayerDrawable(arrayOf(box, arrow)).apply {
-                val i = (4 * dp).toInt(); setLayerInset(1, i, i, i, i)
-            }
+            background = pl.sinusoide.sinuschat.ui.Win7GoDrawable(dp)
             isClickable = true
             setOnClickListener { handleNext() }
         }
-        fieldRow.addView(btnNext, LinearLayout.LayoutParams((32 * dp).toInt(), (32 * dp).toInt()))
-        side.addView(fieldRow, LinearLayout.LayoutParams(-1, -2))
-        tile.addView(side, LinearLayout.LayoutParams(0, -2, 1f))
-        content.addView(tile, LinearLayout.LayoutParams(-1, -2))
+        fieldRow.addView(btnNext, LinearLayout.LayoutParams((30 * dp).toInt(), (30 * dp).toInt()))
+        content.addView(fieldRow, LinearLayout.LayoutParams(-2, -2).apply { topMargin = (14 * dp).toInt() })
 
         tvMessage.setTextColor(Color.WHITE)
+        tvMessage.gravity = Gravity.CENTER
+        tvMessage.setShadowLayer(4 * dp, 0f, 1 * dp, 0xA0001030.toInt())
         content.addView(tvMessage, LinearLayout.LayoutParams(-1, -2).apply {
             topMargin = (8 * dp).toInt(); bottomMargin = (10 * dp).toInt()
         })
-        content.addView(View(this), LinearLayout.LayoutParams(1, 0, 1f))
         content.addView(keypad, LinearLayout.LayoutParams(-2, -2))
 
-        root.addView(View(this).apply {
-            background = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
-                intArrayOf(0x00F99736, 0xFFF99736.toInt(), 0x00F99736))
-        }, LinearLayout.LayoutParams(-1, (2 * dp).toInt()))
-        val bottom = FrameLayout(this).apply { setBackgroundColor(bandDark) }
         forgotLink = TextView(this).apply {
             text = getString(R.string.lock_forgot)
-            textSize = 14f; setTextColor(Color.WHITE)
-            paintFlags = paintFlags or android.graphics.Paint.UNDERLINE_TEXT_FLAG
+            textSize = 14f; setTextColor(Color.WHITE); gravity = Gravity.CENTER
+            setShadowLayer(4 * dp, 0f, 1 * dp, 0xA0001030.toInt())
+            background = pl.sinusoide.sinuschat.ui.Win7GlassButtonDrawable(dp)
             setPadding((18 * dp).toInt(), 0, (18 * dp).toInt(), 0)
-            gravity = Gravity.CENTER_VERTICAL
+            minWidth = (150 * dp).toInt()
             visibility = View.GONE
             isClickable = true
             setOnClickListener { if (!busy) askRecoveryKey() }
         }
-        bottom.addView(forgotLink, FrameLayout.LayoutParams(-2, (48 * dp).toInt(), Gravity.START or Gravity.TOP))
-        bottom.addView(View(this), FrameLayout.LayoutParams(1, (48 * dp).toInt()))
-        root.addView(bottom, LinearLayout.LayoutParams(-1, -2))
+        content.addView(forgotLink, LinearLayout.LayoutParams(-2, (34 * dp).toInt()).apply { topMargin = (14 * dp).toInt() })
+        content.addView(View(this), LinearLayout.LayoutParams(1, 0, 1f))
+
+        val brand = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        brand.addView(ImageView(this).apply { setImageResource(R.mipmap.ic_launcher) },
+            LinearLayout.LayoutParams((24 * dp).toInt(), (24 * dp).toInt()).apply { marginEnd = (8 * dp).toInt() })
+        brand.addView(xpText(getString(R.string.app_name), 17f, 0xEBFFFFFF.toInt(), bold = true).apply { shadowText(this) })
+        content.addView(brand, LinearLayout.LayoutParams(-2, -2).apply { topMargin = (18 * dp).toInt() })
         updateForgotLink(animate = false)
 
         ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            top.setPadding(bars.left, bars.top, bars.right, 0)
-            bottom.setPadding(bars.left, 0, bars.right, bars.bottom)
-            scroll.setPadding(bars.left, 0, bars.right, 0)
+            scroll.setPadding(bars.left, bars.top, bars.right, bars.bottom)
             insets
         }
         setContentView(root)
@@ -508,7 +477,7 @@ class ScreenLockActivity : AppCompatActivity() {
 
     private fun buildRetroDialog() {
         val twoFields = mode == MODE_SET || mode == MODE_SET_DURESS
-        val root = FrameLayout(this).apply { setBackgroundColor(RetroUi.CHROME) }
+        val root = FrameLayout(this).apply { background = pl.sinusoide.sinuschat.ui.Win7LogonDrawable() }
         val scroll = ScrollView(this).apply {
             isFillViewport = true
             isVerticalScrollBarEnabled = false
@@ -529,41 +498,48 @@ class ScreenLockActivity : AppCompatActivity() {
 
         val frame = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = GradientDrawable().apply {
-                setColor(RetroUi.PANEL)
-                setStroke((1 * dp).toInt(), RetroUi.TITLE_LINE)
+            background = pl.sinusoide.sinuschat.ui.AeroGlassDrawable(dp, line = false)
+            foreground = GradientDrawable().apply {
+                cornerRadius = 6 * dp
+                setStroke((1 * dp).toInt(), 0xFF5A7AA6.toInt())
             }
-            val p = (1 * dp).toInt(); setPadding(p, p, p, p)
+            outlineProvider = object : android.view.ViewOutlineProvider() {
+                override fun getOutline(view: View, outline: android.graphics.Outline) {
+                    outline.setRoundRect(0, 0, view.width, view.height, 6 * dp)
+                }
+            }
+            clipToOutline = true
+            elevation = 8 * dp
+            val p = (6 * dp).toInt(); setPadding(p, 0, p, p)
         }
         holder.addView(frame, LinearLayout.LayoutParams(-1, -2))
 
         val bar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            background = RetroUi.titleBar(this@ScreenLockActivity)
-            setPadding((6 * dp).toInt(), 0, (4 * dp).toInt(), 0)
+            setPadding((2 * dp).toInt(), 0, 0, 0)
         }
         bar.addView(ImageView(this).apply { setImageResource(R.mipmap.ic_launcher) },
-            LinearLayout.LayoutParams((18 * dp).toInt(), (18 * dp).toInt()).apply { marginEnd = (6 * dp).toInt() })
+            LinearLayout.LayoutParams((18 * dp).toInt(), (18 * dp).toInt()).apply { marginEnd = (7 * dp).toInt() })
         bar.addView(tvTitle.apply {
-            textSize = 14f; setTextColor(Color.WHITE); typeface = Typeface.DEFAULT_BOLD
+            textSize = 14f; setTextColor(RetroUi.NAVY); typeface = Typeface.DEFAULT
+            setShadowLayer(6 * dp, 0f, 0f, 0xE6FFFFFF.toInt())
             maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
         }, LinearLayout.LayoutParams(0, -2, 1f))
-        if (!forcedNewPin) bar.addView(TextView(this).apply {
-            text = "X"
+        if (!forcedNewPin) bar.addView(View(this).apply {
             contentDescription = getString(R.string.cancel)
-            textSize = 13f; setTextColor(Color.WHITE); typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
-            background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-                intArrayOf(0xFFE88A6E.toInt(), 0xFFD6492E.toInt(), 0xFFC23A1F.toInt())).apply {
-                cornerRadius = 2 * dp; setStroke((1 * dp).toInt(), Color.WHITE)
-            }
+            background = pl.sinusoide.sinuschat.ui.Win7CloseDrawable(dp)
             isClickable = true
             setOnClickListener { finish() }
-        }, LinearLayout.LayoutParams((24 * dp).toInt(), (24 * dp).toInt()))
-        frame.addView(bar, LinearLayout.LayoutParams(-1, (32 * dp).toInt()))
+        }, LinearLayout.LayoutParams((44 * dp).toInt(), (20 * dp).toInt()).apply { bottomMargin = (6 * dp).toInt() })
+        frame.addView(bar, LinearLayout.LayoutParams(-1, (34 * dp).toInt()))
 
         content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
+            background = GradientDrawable().apply {
+                setColor(RetroUi.PANEL)
+                setStroke((1 * dp).toInt(), 0xFF8DA4C4.toInt())
+            }
             setPadding((14 * dp).toInt(), (12 * dp).toInt(), (14 * dp).toInt(), (14 * dp).toInt())
         }
         frame.addView(content, LinearLayout.LayoutParams(-1, -2))
@@ -640,7 +616,7 @@ class ScreenLockActivity : AppCompatActivity() {
         content.addView(buttons, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (16 * dp).toInt() })
 
         if (mode == MODE_SHUFFLE_TEST) {
-            shuffleOffLink = xpText(getString(R.string.lock_shuffle_test_off), 13.5f, RetroUi.TITLE_MID).apply {
+            shuffleOffLink = xpText(getString(R.string.lock_shuffle_test_off), 13.5f, RetroUi.ACCENT).apply {
                 paintFlags = paintFlags or android.graphics.Paint.UNDERLINE_TEXT_FLAG
                 setPadding(0, (12 * dp).toInt(), 0, 0)
                 isClickable = true
@@ -654,6 +630,7 @@ class ScreenLockActivity : AppCompatActivity() {
         }
         setContentView(root)
         fitKeypad(scroll)
+        RetroUi.lightStatusIcons(this)
     }
 
     private fun advanceRetroField(): Boolean {

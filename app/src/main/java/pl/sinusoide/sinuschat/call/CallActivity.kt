@@ -1091,6 +1091,7 @@ class CallActivity : AppCompatActivity() {
             setPadding((14 * dp).toInt(), (6 * dp).toInt(), (14 * dp).toInt(), (6 * dp).toInt())
         }
         tvStatus = TextView(this).apply {
+            accessibilityLiveRegion = android.view.View.ACCESSIBILITY_LIVE_REGION_POLITE
             text = getString(R.string.calling)
             textSize = 14f; setTextColor(0xE6FFFFFF.toInt()); gravity = Gravity.CENTER
             typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)

@@ -577,10 +577,9 @@ object MessageRepository {
     }
 
     fun sendMovedBlocking(context: Context, conversationId: String, myHash: String, other: String,
-                          oldHash: String, sig: String) {
+                          oldHash: String, sig: String): Boolean =
         sendEvent(context, conversationId, pl.sinusoide.sinuschat.util.AccountMove.KIND,
-            JSONObject().put("senderHash", myHash).put("oldHash", oldHash).put("sig", sig), other)
-    }
+            JSONObject().put("senderHash", myHash).put("oldHash", oldHash).put("sig", sig), other) != null
 
     fun sendKeyHintsBlocking(context: Context, myHash: String) {
         for (other in pl.sinusoide.sinuschat.util.LocalChats.contacts(context, myHash).take(500)) {
@@ -602,7 +601,7 @@ object MessageRepository {
         payloadJson: JSONObject,
         recipientHash: String,
         direct: Boolean = false
-    ) {
+    ): JSONObject? {
         val payloadB64 = Base64.encodeToString(
             payloadJson.toString().toByteArray(Charsets.UTF_8), Base64.NO_WRAP
         )
@@ -613,7 +612,7 @@ object MessageRepository {
             put("payloadB64", payloadB64)
             put("recipientHash", recipientHash)
         }
-        if (direct) ApiClient.post("/api/message", body, context)
+        return if (direct) ApiClient.post("/api/message", body, context)
         else pl.sinusoide.sinuschat.crypto.SealedSender.post(context, body)
     }
 

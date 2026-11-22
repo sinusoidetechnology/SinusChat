@@ -127,12 +127,13 @@ class UsbPlugView @JvmOverloads constructor(
 
         val since = if (doneNs == 0L) -1f else (System.nanoTime() - doneNs) / 1_000_000f
         if (since < 0f) {
-            val swing = sin(2f * PI.toFloat() * (ms % FLOAT_MS) / FLOAT_MS)
+            val still = A11y.reducedMotion(context)
+            val swing = if (still) 0f else sin(2f * PI.toFloat() * (ms % FLOAT_MS) / FLOAT_MS)
             canvas.save()
             canvas.translate(0f, RANGE * resources.displayMetrics.density * swing)
             canvas.drawPath(arrowScaled, fill)
             canvas.restore()
-            if (isShown) postInvalidateOnAnimation()
+            if (isShown && !still) postInvalidateOnAnimation()
             return
         }
 

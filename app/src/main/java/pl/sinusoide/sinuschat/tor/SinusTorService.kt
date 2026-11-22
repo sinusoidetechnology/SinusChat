@@ -10,13 +10,18 @@ class SinusTorService : TorService() {
     private var blocked = false
 
     override fun onCreate() {
-        blocked = SafeMode.isDisabled(this, SafeMode.Part.TOR) ||
+        blocked = ranInProcess || SafeMode.isDisabled(this, SafeMode.Part.TOR) ||
             !pl.sinusoide.sinuschat.util.PrivacySettings.isTorEnabled(this)
         if (blocked) {
             stopSelf()
             return
         }
+        ranInProcess = true
         super.onCreate()
+    }
+
+    companion object {
+        @Volatile private var ranInProcess = false
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {

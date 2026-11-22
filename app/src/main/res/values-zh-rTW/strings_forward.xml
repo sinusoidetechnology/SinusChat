@@ -25,7 +25,6 @@
     <string name="forward_unsafe">無法分享這個檔案</string>
     <string name="forward_setup_first">請先設定 SinusChat</string>
     <string name="forward_blocked_row">已封鎖的聯絡人</string>
-    <string name="forward_voice_no_groups">語音訊息只能轉傳到一對一對話</string>
     <string name="forward_fail_generic">無法傳送</string>
     <string name="forward_fail_blocked">此聯絡人已被封鎖</string>
     <string name="forward_fail_upload">無法上傳檔案</string>

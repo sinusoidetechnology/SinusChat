@@ -262,7 +262,6 @@ class ForwardActivity : AppCompatActivity() {
 
     private fun loadChats(): List<Chat> {
         val arr = ConversationCache.load(this) ?: return emptyList()
-        val hasVoice = items.any { it is ForwardSender.Item.Voice }
         val out = ArrayList<Chat>()
         for (i in 0 until arr.length()) {
             val j = arr.optJSONObject(i) ?: continue
@@ -278,7 +277,6 @@ class ForwardActivity : AppCompatActivity() {
                     ?: j.optStringOrNull("avatar_url")?.takeIf { !pl.sinusoide.sinuschat.crypto.ProfileCrypto.isEncryptedAvatar(it) }
             val reason = when {
                 !isGroup && BlockList.isBlocked(this, other) -> getString(R.string.forward_blocked_row)
-                isGroup && hasVoice -> getString(R.string.forward_voice_no_groups)
                 else -> null
             }
             out += Chat(ForwardSender.Target(id, other, isGroup, name), avatar,

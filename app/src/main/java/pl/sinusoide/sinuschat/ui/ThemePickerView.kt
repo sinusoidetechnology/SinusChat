@@ -26,7 +26,8 @@ class ThemePickerView(
     private data class Palette(
         val background: Int, val surface: Int, val bubbleOther: Int,
         val bubbleMine: Int, val text: Int, val accent: Int,
-        val aurora: Boolean = false
+        val aurora: Boolean = false,
+        val glass: Boolean = false
     )
 
     private fun attr(ctx: Context, id: Int, fallback: Int): Int =
@@ -174,7 +175,7 @@ class ThemePickerView(
         root.addView(LinearLayout(context).apply {
             orientation = HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setBackgroundColor(p.surface)
+            if (p.glass) background = AeroGlassDrawable(dp) else setBackgroundColor(p.surface)
             setPadding((6 * dp).toInt(), 0, (6 * dp).toInt(), 0)
             addView(View(context).apply {
                 background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(p.accent) }
@@ -197,7 +198,7 @@ class ThemePickerView(
         root.addView(chat, LayoutParams(-1, 0, 1f))
 
         root.addView(FrameLayout(context).apply {
-            setBackgroundColor(p.surface)
+            if (p.glass) background = RetroUi.bottomBar(context) else setBackgroundColor(p.surface)
             setPadding((6 * dp).toInt(), (5 * dp).toInt(), (6 * dp).toInt(), (5 * dp).toInt())
             addView(View(context).apply {
                 background = GradientDrawable().apply {
@@ -240,9 +241,9 @@ class ThemePickerView(
         text = 0xFF0E1621.toInt(), accent = 0xFF5288C1.toInt())
 
     private fun retroPalette() = Palette(
-        background = RetroUi.CHROME, surface = RetroUi.TITLE_MID,
+        background = RetroUi.CHROME, surface = RetroUi.GLASS_MID,
         bubbleOther = RetroUi.ROW_OTHER, bubbleMine = RetroUi.ROW_MINE,
-        text = RetroUi.NAVY, accent = RetroUi.TITLE_MID)
+        text = RetroUi.NAVY, accent = RetroUi.ACCENT, glass = true)
 
     private fun dynamicPalette(): Palette {
         val base = ContextThemeWrapper(context, R.style.Theme_SinusChat_Dynamic)

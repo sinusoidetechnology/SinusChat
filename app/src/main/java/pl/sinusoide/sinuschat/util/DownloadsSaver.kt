@@ -15,13 +15,30 @@ object DownloadsSaver {
     private const val TAG = "DownloadsSaver"
     const val FOLDER = "SinusChat"
 
-    fun save(ctx: Context, src: File, name: String, mime: String): String? = try {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) saveViaMediaStore(ctx, src, name, mime)
-        else saveLegacy(ctx, src, name, mime)
-    } catch (e: Throwable) {
-        Log.e(TAG, "Zapis do folderu SinusChat nie wyszedł", e)
-        null
+    private val lock = Any()
+
+    fun save(ctx: Context, src: File, name: String, mime: String): String? = synchronized(lock) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) saveViaMediaStore(ctx, src, name, mime)
+            else saveLegacy(ctx, src, name, mime)
+        } catch (e: Throwable) {
+            Log.e(TAG, "Zapis do folderu SinusChat nie wyszedł", e)
+            null
+        }
     }
+
+    private fun numbered(name: String, n: Int): String {
+        if (n == 0) return name
+        val base = name.substringBeforeLast('.')
+        val ext = name.substringAfterLast('.', "")
+        return if (ext.isEmpty() || base == name) "$name ($n)" else "$base ($n).$ext"
+    }
+
+    private fun taken(ctx: Context, collection: Uri, name: String, path: String): Boolean = try {
+        ctx.contentResolver.query(collection, arrayOf(MediaStore.MediaColumns._ID),
+            "${MediaStore.MediaColumns.DISPLAY_NAME}=? AND ${MediaStore.MediaColumns.RELATIVE_PATH} LIKE ?",
+            arrayOf(name, "$path%"), null)?.use { it.count > 0 } ?: false
+    } catch (_: Exception) { false }
 
     fun locationFor(ctx: Context, mime: String): String {
         val res = when {
@@ -44,19 +61,34 @@ object DownloadsSaver {
             mime.startsWith("video/") -> MediaStore.Video.Media.EXTERNAL_CONTENT_URI
             else -> MediaStore.Downloads.EXTERNAL_CONTENT_URI
         }
-        val values = ContentValues().apply {
-            put(MediaStore.MediaColumns.DISPLAY_NAME, name)
-            put(MediaStore.MediaColumns.MIME_TYPE, mime)
-            put(MediaStore.MediaColumns.RELATIVE_PATH, publicDir(mime) + "/" + FOLDER)
-            put(MediaStore.MediaColumns.IS_PENDING, 1)
-        }
+        val path = publicDir(mime) + "/" + FOLDER
         val resolver = ctx.contentResolver
-        val uri = resolver.insert(collection, values) ?: return null
-        val ok = resolver.openOutputStream(uri)?.use { out -> src.inputStream().use { it.copyTo(out) }; true } ?: false
-        if (!ok) { resolver.delete(uri, null, null); return null }
-        values.clear(); values.put(MediaStore.MediaColumns.IS_PENDING, 0)
-        resolver.update(uri, values, null, null)
-        return name
+        var n = 0
+        while (n < 500 && taken(ctx, collection, numbered(name, n), path)) n++
+        var uri: Uri? = null
+        var finalName = name
+        for (attempt in 0 until 5) {
+            finalName = numbered(name, n + attempt)
+            val values = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, finalName)
+                put(MediaStore.MediaColumns.MIME_TYPE, mime)
+                put(MediaStore.MediaColumns.RELATIVE_PATH, path)
+                put(MediaStore.MediaColumns.IS_PENDING, 1)
+            }
+            uri = try { resolver.insert(collection, values) } catch (e: Exception) {
+                Log.w(TAG, "insert: ${e.javaClass.simpleName}")
+                null
+            }
+            if (uri != null) break
+        }
+        val target = uri ?: return null
+        val ok = try {
+            resolver.openOutputStream(target)?.use { out -> src.inputStream().use { it.copyTo(out) }; true } ?: false
+        } catch (e: Exception) { false }
+        if (!ok) { resolver.delete(target, null, null); return null }
+        val done = ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }
+        resolver.update(target, done, null, null)
+        return finalName
     }
 
     private fun saveLegacy(ctx: Context, src: File, name: String, mime: String): String? {

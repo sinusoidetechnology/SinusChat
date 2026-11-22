@@ -57,7 +57,7 @@
             android:background="@drawable/bg_avatar_circle"
             android:clipToOutline="true"
             android:outlineProvider="background"
-            android:contentDescription="Avatar" />
+            android:contentDescription="@string/a11y_profile_photo" />
 
         <FrameLayout
             android:layout_width="30dp"

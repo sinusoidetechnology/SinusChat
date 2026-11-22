@@ -425,10 +425,10 @@ open class ChatActivity : AppCompatActivity() {
         findViewById<android.widget.ImageButton>(R.id.btn_send_message).apply {
             backgroundTintList = null
             background = retro.button(this@ChatActivity)
-            imageTintList = android.content.res.ColorStateList.valueOf(retro.TITLE_MID)
+            imageTintList = android.content.res.ColorStateList.valueOf(retro.ACCENT)
             elevation = 0f
         }
-        retro.lightStatusIcons(this)
+        retro.darkStatusIcons(this)
     }
 
     private fun setupFlowGlass() {
@@ -897,6 +897,12 @@ open class ChatActivity : AppCompatActivity() {
         otherUserName = intent.getStringExtra("otherUserName") ?: "Nieznany"
         otherUserHash = intent.getStringExtra("otherUserHash") ?: ""
         myPhoneHash = SetupActivity.getUserPhoneHash(this)
+        if (!GroupRepository.isGroup(conversationId)) {
+            conversationId = pl.sinusoide.sinuschat.util.AccountMove.currentConvId(this, conversationId, myPhoneHash)
+            if (otherUserHash.isNotEmpty() && conversationId.contains(otherUserHash) && !conversationId.contains(myPhoneHash)) {
+                conversationId = MessageRepository.conversationId(myPhoneHash, otherUserHash)
+            }
+        }
         val isGroup = GroupRepository.isGroup(conversationId)
         translationBlocked = Translations.isBlocked(this, conversationId)
         Translations.addListener(translationChanged)
@@ -2368,12 +2374,17 @@ open class ChatActivity : AppCompatActivity() {
                 copyMessage(msg)
                 exitSelectionMode()
             })
+            if (msg.type == "voice" && !msg.fileId.isNullOrEmpty())
+                add(pl.sinusoide.sinuschat.ui.GlassMenu.Item(R.drawable.ic_document, getString(R.string.voice_transcribe)) {
+                    exitSelectionMode()
+                    transcribeVoice(msg)
+                })
             if (msg.type == MessageEntity.TYPE_ATTACHMENT && !msg.viewOnce && !msg.fileId.isNullOrEmpty())
                 add(pl.sinusoide.sinuschat.ui.GlassMenu.Item(R.drawable.ic_download, getString(R.string.save_to_device)) {
                     val items = adapter.albumOf(msg.id) ?: listOf(msg)
                     val subject = if (items.size > 1) getString(R.string.safe_several_files) else (msg.attachmentName ?: getString(R.string.safe_this_file))
                     pl.sinusoide.sinuschat.util.SafeEngine.guard(this@ChatActivity, pl.sinusoide.sinuschat.util.SafeEngine.Risk.SAVE_FILE, subject) {
-                        items.forEach { saveAttachmentToDevice(it, confirmed = true) }
+                        if (items.size > 1) saveManyToDevice(items) else saveAttachmentToDevice(msg, confirmed = true)
                     }
                     exitSelectionMode()
                 })
@@ -2382,6 +2393,48 @@ open class ChatActivity : AppCompatActivity() {
     }
 
     private var moreMenu: pl.sinusoide.sinuschat.ui.GlassMenu.Handle? = null
+
+    private fun refreshMessage(id: String) {
+        val idx = adapter.currentList.indexOfFirst { it.id == id }
+        if (idx >= 0) adapter.notifyItemChanged(idx)
+    }
+
+    private fun transcribeVoice(msg: MessageEntity) {
+        val T = pl.sinusoide.sinuschat.util.VoiceTranscriber
+        if (!T.supported(this)) { PopupHelper.showError(this, getString(R.string.voice_transcribe_unsupported)); return }
+        if (T.isBusy(msg.id)) return
+        if (T.cache.containsKey(msg.id)) { refreshMessage(msg.id); return }
+        val app = applicationContext
+        val file = pl.sinusoide.sinuschat.util.MediaManager.voiceCacheFile(app, msg.id)
+        val start = {
+            T.transcribe(app, msg.id, file) { outcome, _ ->
+                refreshMessage(msg.id)
+                if (!isFinishing && !isDestroyed) when (outcome) {
+                    pl.sinusoide.sinuschat.util.VoiceTranscriber.Outcome.OK -> pl.sinusoide.sinuschat.ui.A11y.announce(this, getString(R.string.voice_transcribed))
+                    pl.sinusoide.sinuschat.util.VoiceTranscriber.Outcome.EMPTY -> PopupHelper.show(this, getString(R.string.voice_transcribe_empty))
+                    pl.sinusoide.sinuschat.util.VoiceTranscriber.Outcome.NO_LANGUAGE -> PopupHelper.show(this, getString(R.string.voice_transcribe_language))
+                    pl.sinusoide.sinuschat.util.VoiceTranscriber.Outcome.UNSUPPORTED -> PopupHelper.showError(this, getString(R.string.voice_transcribe_unsupported))
+                    pl.sinusoide.sinuschat.util.VoiceTranscriber.Outcome.FAILED -> PopupHelper.showError(this, getString(R.string.voice_transcribe_failed))
+                }
+            }
+            refreshMessage(msg.id)
+        }
+        if (file.exists() && file.length() > 0) { start(); return }
+        PopupHelper.show(this, getString(R.string.voice_transcribing))
+        pl.sinusoide.sinuschat.util.AppExecutor.io {
+            val ok = try {
+                val part = java.io.File(file.parentFile, file.name + ".part")
+                val src = pl.sinusoide.sinuschat.util.VoicePlayer.normalizeSource(msg.fileId ?: "")
+                if (!pl.sinusoide.sinuschat.util.FileUploader.downloadVoiceToFile(app, src, msg.fileKey, part)) { part.delete(); false }
+                else { if (!part.renameTo(file)) { part.copyTo(file, overwrite = true); part.delete() }; true }
+            } catch (e: Exception) { false }
+            pl.sinusoide.sinuschat.util.AppExecutor.main {
+                if (!isFinishing && !isDestroyed) {
+                    if (ok) start() else PopupHelper.showError(this, getString(R.string.voice_transcribe_failed))
+                }
+            }
+        }
+    }
 
 
     private fun copyMessage(item: MessageEntity) {
@@ -2403,8 +2456,9 @@ open class ChatActivity : AppCompatActivity() {
         if (item.senderHash != myPhoneHash || item.type != MessageEntity.TYPE_TEXT) {
             PopupHelper.show(this, getString(R.string.edit_only_own_text)); return
         }
+        val group = GroupRepository.isGroup(conversationId)
         val secret = sharedSecret
-        if (secret == null) { PopupHelper.showError(this, getString(R.string.no_secure_channel)); return }
+        if (secret == null && !group) { PopupHelper.showError(this, getString(R.string.no_secure_channel)); return }
 
         val sheet = BottomSheetDialog(this, R.style.Theme_SinusChat_BottomSheet)
         val view = layoutInflater.inflate(R.layout.layout_edit_message_sheet, null)
@@ -2422,7 +2476,8 @@ open class ChatActivity : AppCompatActivity() {
         btnSave.setOnClickListener {
             val newText = etInput.text.toString().trim()
             if (newText.isNotEmpty() && newText != item.text) {
-                MessageRepository.editMessageEverywhere(
+                if (group) GroupRepository.editMessage(applicationContext, conversationId, myPhoneHash, item.id, newText)
+                else if (secret != null) MessageRepository.editMessageEverywhere(
                     this, conversationId, myPhoneHash, otherUserHash, secret, item.id, newText
                 )
             }
@@ -2607,6 +2662,13 @@ open class ChatActivity : AppCompatActivity() {
     }
 
     private fun addReaction(item: MessageEntity, emoji: String) {
+        if (GroupRepository.isGroup(conversationId)) {
+            val next = if (item.reactions[myPhoneHash] == emoji) null else emoji
+            if (next != null) rememberReaction(next)
+            GroupRepository.setReaction(applicationContext, conversationId, myPhoneHash, item.id, next)
+            if (adapter.isSelectionMode) exitSelectionMode()
+            return
+        }
         val secret = sharedSecret ?: return
         val myCurrentReaction = item.reactions[myPhoneHash]
         val newEmoji = if (myCurrentReaction == emoji) null else emoji
@@ -3041,6 +3103,7 @@ open class ChatActivity : AppCompatActivity() {
                     } else if (newest != null) {
                         val isNew = newest.id != prevNewest
                         val mine = newest.senderHash == myPhoneHash
+                        if (firstListShown && isNew && !mine && !newest.isSystemMessage) announceIncoming(newest)
                         if (!firstListShown || wasAtBottom || (isNew && mine)) {
                             recycler.scrollToPosition((adapter.itemCount - 1).coerceAtLeast(0))
                         } else if (isNew) {
@@ -3063,6 +3126,14 @@ open class ChatActivity : AppCompatActivity() {
                 conversationChecked = true
             }
         }
+    }
+
+    private fun announceIncoming(m: MessageEntity) {
+        if (!pl.sinusoide.sinuschat.ui.A11y.enabled(this)) return
+        val name = if (GroupRepository.isGroup(conversationId))
+            adapter.senderName?.invoke(m.senderHash) ?: getString(R.string.group_member)
+        else otherUserName
+        pl.sinusoide.sinuschat.ui.A11y.announce(this, getString(R.string.a11y_new_message, name, ReplyLabel.of(this, m)))
     }
 
     private fun updateInputVisibility(messages: List<MessageEntity>) {
@@ -3795,6 +3866,11 @@ open class ChatActivity : AppCompatActivity() {
                   else                   R.drawable.ic_mic
         if (lastSendIconRes != res) {
             btnSend.setImageResource(res)
+            btnSend.contentDescription = getString(when (res) {
+                R.drawable.ic_lock -> R.string.a11y_chat_locked
+                R.drawable.ic_mic -> R.string.a11y_record_voice
+                else -> R.string.action_send
+            })
             lastSendIconRes = res
         }
 
@@ -4246,6 +4322,47 @@ open class ChatActivity : AppCompatActivity() {
                 }
             }
         }
+    }
+
+    private fun saveManyToDevice(items: List<MessageEntity>) {
+        val list = items.filter { !it.viewOnce && !it.fileId.isNullOrEmpty() }
+        if (list.isEmpty()) return
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q && ContextCompat.checkSelfPermission(this,
+                android.Manifest.permission.WRITE_EXTERNAL_STORAGE) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            pendingAction = { saveManyToDevice(list) }
+            requestPermission.launch(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            return
+        }
+        PopupHelper.show(this, getString(R.string.saving_files, list.size))
+        val app = applicationContext
+        val files = arrayOfNulls<java.io.File>(list.size)
+        fun store() {
+            AppExecutor.io {
+                var saved = 0
+                list.forEachIndexed { i, m ->
+                    val f = files[i] ?: return@forEachIndexed
+                    val name = m.attachmentName ?: f.name
+                    if (pl.sinusoide.sinuschat.util.DownloadsSaver.save(app, f, name, mimeOf(name)) != null) saved++
+                }
+                AppExecutor.main {
+                    if (isFinishing || isDestroyed) return@main
+                    val where = pl.sinusoide.sinuschat.util.DownloadsSaver.locationFor(this, mimeOf(list.first().attachmentName ?: ""))
+                    if (saved == list.size) PopupHelper.showSuccess(this, getString(R.string.saved_many_to_folder, saved, where))
+                    else PopupHelper.showError(this, getString(R.string.saved_some_to_folder, saved, list.size, where))
+                }
+            }
+        }
+        fun fetchMissing(second: Boolean) {
+            val missing = list.indices.filter { files[it] == null }
+            if (missing.isEmpty()) { store(); return }
+            var left = missing.size
+            for (i in missing) AttachmentDownloader.fetch(app, list[i]) { f ->
+                files[i] = f
+                left--
+                if (left == 0) { if (second) store() else fetchMissing(true) }
+            }
+        }
+        fetchMissing(false)
     }
 
     private fun withAlbums(items: List<MessageEntity>): List<MessageEntity> {
@@ -4794,15 +4911,28 @@ open class ChatActivity : AppCompatActivity() {
             return
         }
 
+        val group = GroupRepository.isGroup(conversationId)
         AppExecutor.io {
             try {
-                val up = pl.sinusoide.sinuschat.util.FileUploader.uploadVoiceBlocking(this, file)
+                val downloads = if (group) GroupRepository.voiceDownloads(this, conversationId, myPhoneHash)
+                    else pl.sinusoide.sinuschat.util.FileUploader.VOICE_DOWNLOADS
+                val up = pl.sinusoide.sinuschat.util.FileUploader.uploadVoiceBlocking(this, file, downloads)
                 if (up == null) {
                     file.delete()
                     AppExecutor.main { PopupHelper.showError(this, getString(R.string.error_sending_voice)) }
                     return@io
                 }
-                val secret = sharedSecret ?: run { file.delete(); return@io }
+                if (group) {
+                    val ok = GroupRepository.sendVoiceBlocking(this, conversationId, myPhoneHash, up.first, up.second, durationSec, file)
+                    file.delete()
+                    if (!ok) AppExecutor.main { PopupHelper.showError(this, getString(R.string.error_sending_voice)) }
+                    return@io
+                }
+                val secret = sharedSecret ?: run {
+                    file.delete()
+                    AppExecutor.main { PopupHelper.showError(this, getString(R.string.no_secure_channel)) }
+                    return@io
+                }
                 MessageRepository.sendVoice(this, conversationId, myPhoneHash, otherUserHash, secret,
                     up.first, up.second, durationSec, file)
                 file.delete()

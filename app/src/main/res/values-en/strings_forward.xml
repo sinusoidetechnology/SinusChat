@@ -25,7 +25,6 @@
     <string name="forward_unsafe">This file can\'t be shared</string>
     <string name="forward_setup_first">Set up SinusChat first</string>
     <string name="forward_blocked_row">Blocked contact</string>
-    <string name="forward_voice_no_groups">Voice messages can only be forwarded to 1:1 chats</string>
     <string name="forward_fail_generic">couldn\'t send</string>
     <string name="forward_fail_blocked">this contact is blocked</string>
     <string name="forward_fail_upload">couldn\'t upload the file</string>

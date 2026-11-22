@@ -20,4 +20,5 @@
     <string name="tor_route_distinct_desc">Trasa nepůjde dvakrát přes stejnou zemi. Dodatečná ochrana: připojení se může sestavovat o něco déle a vaše trasy budou o něco méně podobné trasám ostatních uživatelů Toru.</string>
     <string name="tor_route_footer">Tor si vstupní uzel záměrně ponechává několik měsíců, protože to ztěžuje vaše vystopování. Prostřední a výstupní uzel se pravidelně mění. Země uzlů pocházejí z databáze IPFire Location (CC BY-SA 4.0), která je součástí Toru.</string>
     <string name="tor_startup_progress">Připojuji se k síti Tor… %1$d%%</string>
+    <string name="tor_route_orbot">Tor běží přes aplikaci Orbot. Trasu připojení a země uzlů najdete v Orbotu.</string>
 </resources>

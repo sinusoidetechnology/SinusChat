@@ -5,7 +5,7 @@ object AppConfig {
     const val API_BASE     = "https://api.sinusoide.pl"
     const val WS_URL       = "wss://api.sinusoide.pl/ws"
 
-    const val AUTH_URL         = "https://files.sinusoide.pl/api/auth.php"
+    const val AUTH_URL         = "https://api.sinusoide.pl/api/files/auth.php"
 
     const val NTFY_BASE = "https://api.sinusoide.pl/ntfy"
 
@@ -18,5 +18,4 @@ object AppConfig {
     const val TERMS_URL = "https://sinusoide.pl/warunki.json"
     const val CODENAME = "Dolphin"
 
-    const val AI_MODELS_BASE = "https://files.sinusoide.pl/ai/"
 }

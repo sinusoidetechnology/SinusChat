@@ -3,6 +3,14 @@
     <item name="flow_glass_keep" type="id" />
     <item name="flow_glass_seen" type="id" />
     <item name="retro_shape_root" type="id" />
+    <item name="a11y_root" type="id" />
+    <item name="a11y_row" type="id" />
+    <item name="a11y_logged" type="id" />
+    <item name="voice_transcript" type="id" />
+    <item name="a11y_audited" type="id" />
+    <item name="a11y_fixed" type="id" />
+    <item name="album_tile" type="id" />
+    <item name="album_loaded" type="id" />
     <item name="retro_shape_bg" type="id" />
     <item name="insets_watch" type="id" />
     <item name="flow_check" type="id" />

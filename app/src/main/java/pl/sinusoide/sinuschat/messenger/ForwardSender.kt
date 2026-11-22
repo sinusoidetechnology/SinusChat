@@ -196,7 +196,13 @@ object ForwardSender {
                     keepLocalCopy(ctx, src, gid, id, up.fileName)
                     GroupRepository.sendAttachmentBlocking(ctx, gid, myHash, id, up.fileId, up.fileKey, up.fileName)
                 }
-                is Item.Voice -> return ctx.getString(R.string.forward_voice_no_groups)
+                is Item.Voice -> {
+                    val file = voiceFile(ctx, item) ?: return ctx.getString(R.string.forward_fail_voice)
+                    val (url, voiceKey) = FileUploader.uploadVoiceBlocking(ctx, file, (recipients * 2).coerceAtMost(500))
+                        ?: return ctx.getString(R.string.forward_fail_upload)
+                    val seconds = item.duration.removeSuffix("s").toIntOrNull() ?: 1
+                    GroupRepository.sendVoiceBlocking(ctx, gid, myHash, url, voiceKey, seconds, file)
+                }
             }
             if (!ok) return ctx.getString(R.string.forward_fail_generic)
             step()

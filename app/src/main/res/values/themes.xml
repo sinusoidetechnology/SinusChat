@@ -32,7 +32,7 @@
         <item name="sinuschat_bubble_other">#182533</item>
         <item name="sinuschat_text_primary">#F5F5F5</item>
         <item name="sinuschat_text_secondary">#7F91A4</item>
-        <item name="sinuschat_text_muted">#5E6D7E</item>
+        <item name="sinuschat_text_muted">#7A8B9E</item>
     </style>
 
     <style name="SinusChat_BottomNav" parent="Widget.Material3.BottomNavigationView">
@@ -93,7 +93,7 @@
         <item name="sinuschat_bubble_other">#182533</item>
         <item name="sinuschat_text_primary">#F5F5F5</item>
         <item name="sinuschat_text_secondary">#7F91A4</item>
-        <item name="sinuschat_text_muted">#5E6D7E</item>
+        <item name="sinuschat_text_muted">#7A8B9E</item>
     </style>
 
     <style name="Theme.SinusChat.Flow" parent="Base.Theme.SinusChat">
@@ -144,18 +144,18 @@
         <item name="sinuschat_bubble_other">#FFFFFF</item>
         <item name="sinuschat_text_primary">#0E1621</item>
         <item name="sinuschat_text_secondary">#475569</item>
-        <item name="sinuschat_text_muted">#64748B</item>
+        <item name="sinuschat_text_muted">#556479</item>
     </style>
 
     <style name="ShapeAppearance.SinusChat.Retro" parent="">
         <item name="cornerFamily">rounded</item>
-        <item name="cornerSize">2dp</item>
+        <item name="cornerSize">4dp</item>
     </style>
 
     <style name="Theme.SinusChat.Dialog.Retro" parent="Theme.SinusChat.Dialog">
         <item name="shapeAppearanceLargeComponent">@style/ShapeAppearance.SinusChat.Retro</item>
         <item name="shapeAppearanceCornerExtraLarge">@style/ShapeAppearance.SinusChat.Retro</item>
-        <item name="dialogCornerRadius">2dp</item>
+        <item name="dialogCornerRadius">6dp</item>
     </style>
 
     <style name="Theme.SinusChat.Retro" parent="Theme.SinusChat.Light">
@@ -168,19 +168,19 @@
         <item name="shapeAppearanceCornerMedium">@style/ShapeAppearance.SinusChat.Retro</item>
         <item name="shapeAppearanceCornerLarge">@style/ShapeAppearance.SinusChat.Retro</item>
         <item name="shapeAppearanceCornerExtraLarge">@style/ShapeAppearance.SinusChat.Retro</item>
-        <item name="colorPrimary">#245EDB</item>
+        <item name="colorPrimary">#2470C8</item>
         <item name="colorOnPrimary">#FFFFFF</item>
-        <item name="sinuschat_background">#C7D7EE</item>
-        <item name="sinuschat_background_solid">#C7D7EE</item>
-        <item name="sinuschat_surface">#DCE6F4</item>
-        <item name="sinuschat_surface_variant">#B3C9EA</item>
-        <item name="sinuschat_surface_elevated">#E6EEF9</item>
-        <item name="sinuschat_sheet">#E6EEF9</item>
-        <item name="sinuschat_border">#7F9DB9</item>
-        <item name="sinuschat_bubble_other">#DDE8F7</item>
-        <item name="sinuschat_text_primary">#10203A</item>
-        <item name="sinuschat_text_secondary">#3D5E8C</item>
-        <item name="sinuschat_text_muted">#5F7899</item>
+        <item name="sinuschat_background">#E4EDF8</item>
+        <item name="sinuschat_background_solid">#E4EDF8</item>
+        <item name="sinuschat_surface">#F5F9FD</item>
+        <item name="sinuschat_surface_variant">#D6E8F8</item>
+        <item name="sinuschat_surface_elevated">#FFFFFF</item>
+        <item name="sinuschat_sheet">#F5F9FD</item>
+        <item name="sinuschat_border">#A5BCD9</item>
+        <item name="sinuschat_bubble_other">#FFFFFF</item>
+        <item name="sinuschat_text_primary">#1B2B40</item>
+        <item name="sinuschat_text_secondary">#46607F</item>
+        <item name="sinuschat_text_muted">#58708C</item>
     </style>
 
     <style name="Theme.SinusChat.Dynamic" parent="Theme.Material3.DayNight.NoActionBar">

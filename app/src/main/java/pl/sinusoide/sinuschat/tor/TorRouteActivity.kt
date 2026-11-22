@@ -180,6 +180,12 @@ class TorRouteActivity : AppCompatActivity() {
             newButton.visibility = View.GONE
             return
         }
+        if (TorManager.viaOrbot) {
+            showMessage(getString(R.string.tor_route_orbot))
+            newButton.visibility = View.GONE
+            warning.visibility = View.GONE
+            return
+        }
         newButton.visibility = View.VISIBLE
         if (routeCard.childCount == 0) showBuilding(getString(R.string.tor_route_loading))
         TorCircuits.route { r ->

@@ -36,7 +36,7 @@ class ChangeEmailActivity : AppCompatActivity() {
         super.attachBaseContext(pl.sinusoide.sinuschat.util.LocaleManager.wrap(newBase))
     }
 
-    private val authUrl = "https://files.sinusoide.pl/api/auth.php"
+    private val authUrl = pl.sinusoide.sinuschat.AppConfig.AUTH_URL
 
     private lateinit var viewInput: View
     private lateinit var viewVerify: View
@@ -389,17 +389,22 @@ class ChangeEmailActivity : AppCompatActivity() {
                 authProof?.let { body.put("authProof", it) }
                 pl.sinusoide.sinuschat.network.ApiClient.post("/api/user/change-email", body, this)
             } catch (_: Exception) { null }
+            val movedOk = resp != null && resp.optBoolean("ok", false)
+            val oldHash = SetupActivity.getUserPhoneHash(this)
+            val movedContacts = if (movedOk) {
+                try { pl.sinusoide.sinuschat.util.AccountMove.moveLocally(applicationContext, oldHash, newHash) }
+                catch (_: Exception) { emptyList() }
+            } else emptyList()
             runOnUiThread {
                 progress.visibility = View.GONE
                 busy = false
-                if (resp != null && resp.optBoolean("ok", false)) {
+                if (movedOk && resp != null) {
                     val token = resp.optString("token")
                     if (token.isNotEmpty()) pl.sinusoide.sinuschat.network.ApiClient.saveToken(this, token)
-                    val oldHash = SetupActivity.getUserPhoneHash(this)
                     SetupActivity.updateEmailAndHash(this, newEmail, newHash)
                     val app = applicationContext
                     pl.sinusoide.sinuschat.util.AppExecutor.io {
-                        pl.sinusoide.sinuschat.util.AccountMove.afterEmailChange(app, oldHash, newHash)
+                        pl.sinusoide.sinuschat.util.AccountMove.announceMove(app, oldHash, newHash, movedContacts)
                     }
                     hideKeyboard()
                     showChangedSheet()

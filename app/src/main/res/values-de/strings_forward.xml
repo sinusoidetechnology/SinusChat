@@ -24,7 +24,6 @@
     <string name="forward_unsafe">Diese Datei kann nicht geteilt werden</string>
     <string name="forward_setup_first">Richte zuerst SinusChat ein</string>
     <string name="forward_blocked_row">Blockierter Kontakt</string>
-    <string name="forward_voice_no_groups">Sprachnachrichten kannst du nur in 1:1-Unterhaltungen weiterleiten</string>
     <string name="forward_fail_generic">Senden fehlgeschlagen</string>
     <string name="forward_fail_blocked">dieser Kontakt ist blockiert</string>
     <string name="forward_fail_upload">die Datei konnte nicht hochgeladen werden</string>

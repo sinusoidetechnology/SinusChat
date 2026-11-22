@@ -93,6 +93,7 @@ class SinusApp : Application() {
             }
             override fun onActivityResumed(a: Activity) {
                 top = java.lang.ref.WeakReference(a)
+                if (a !is pl.sinusoide.sinuschat.messenger.BubbleChatActivity) pl.sinusoide.sinuschat.util.MessageNotifier.clearBubbles(a)
                 if (check(a)) {
                     resumePendingLink(a)
                     if (!offerTerms(a)) offerUpdate(a)
@@ -107,6 +108,7 @@ class SinusApp : Application() {
                 ThemeManager.applyBackdrop(a)
                 pl.sinusoide.sinuschat.ui.FlowGlass.install(a)
                 pl.sinusoide.sinuschat.ui.RetroShape.install(a)
+                pl.sinusoide.sinuschat.ui.A11y.install(a)
                 if (a is pl.sinusoide.sinuschat.call.CallActivity || a is pl.sinusoide.sinuschat.call.GroupCallActivity || a is SetupActivity ||
                     a is pl.sinusoide.sinuschat.messenger.QrScanActivity ||
                     a is pl.sinusoide.sinuschat.messenger.ViewOnceActivity) return

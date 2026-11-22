@@ -102,7 +102,7 @@ object PcLinkCalls {
         fun fail(reason: String) { conn.send(LinkFrame.CallEnd(f.call, reason)) }
         if (GroupRepository.isGroup(f.conv)) return fail(LinkFrame.CALL_GROUP)
         if (current?.accepted == true || CallActivity.activeConversationId != null ||
-            GroupCallSession.current?.ended == false) return fail(LinkFrame.CALL_BUSY)
+            GroupCallSession.current?.ended == false || PcLinkGroupCalls.busy()) return fail(LinkFrame.CALL_BUSY)
         val peer = PcLinkHub.peerOf(ctx, f.conv) ?: return fail(LinkFrame.CALL_FAILED)
         if (BlockList.isCutOff(ctx, peer)) return fail(LinkFrame.CALL_FAILED)
         val name = ContactCache.getName(ctx, peer).orEmpty()
@@ -151,7 +151,7 @@ object PcLinkCalls {
         WebSocketManager.onCallEvent = handler
     }
 
-    private fun iceServers(creds: JSONObject): List<IceServer> {
+    fun iceServers(creds: JSONObject): List<IceServer> {
         val arr = creds.optJSONArray("urls") ?: return emptyList()
         val user = creds.optString("username")
         val pass = creds.optString("credential")

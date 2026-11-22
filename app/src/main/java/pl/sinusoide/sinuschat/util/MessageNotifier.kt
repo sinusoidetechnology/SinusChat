@@ -357,6 +357,8 @@ object MessageNotifier {
         false
     }
 
+    @Volatile var openBubble: String? = null
+
     fun dismiss(context: Context, convId: String) {
         if (convId.isEmpty()) return
         val id = convId.hashCode()
@@ -364,9 +366,22 @@ object MessageNotifier {
         val active = try {
             context.getSystemService(NotificationManager::class.java)?.activeNotifications?.firstOrNull { it.id == id }
         } catch (_: Exception) { null } ?: return
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && convId == openBubble &&
             active.notification.flags and android.app.Notification.FLAG_BUBBLE != 0) return
         try { NotificationManagerCompat.from(context).cancel(id) } catch (_: Exception) {}
+    }
+
+    fun clearBubbles(context: Context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
+        val keep = openBubble?.hashCode()
+        val active = try {
+            context.getSystemService(NotificationManager::class.java)?.activeNotifications
+        } catch (_: Exception) { null } ?: return
+        for (n in active) {
+            if (n.notification.flags and android.app.Notification.FLAG_BUBBLE == 0 || n.id == keep) continue
+            forget(n.id)
+            try { NotificationManagerCompat.from(context).cancel(n.id) } catch (_: Exception) {}
+        }
     }
 
     fun onMessageDeleted(context: Context, deleted: pl.sinusoide.sinuschat.data.MessageEntity) {

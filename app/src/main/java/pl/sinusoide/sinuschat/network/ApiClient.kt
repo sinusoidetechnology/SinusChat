@@ -29,9 +29,6 @@ object ApiClient {
         .writeTimeout(30, TimeUnit.SECONDS)
         .build()
 
-    private const val FILES_HOST = "files.sinusoide.pl"
-    private const val RELAY_HOST = "api.sinusoide.pl"
-
     @Volatile private var torClient: Pair<Int, OkHttpClient>? = null
 
     fun httpClient(context: Context): OkHttpClient {
@@ -46,22 +43,10 @@ object ApiClient {
                 java.net.Proxy.Type.SOCKS,
                 java.net.InetSocketAddress("127.0.0.1", torPort)
             ))
-            .addInterceptor { chain -> chain.proceed(viaRelay(chain.request())) }
             .build()
         torClient = torPort to client
         return client
     }
-
-    internal fun viaRelay(req: Request): Request {
-        val url = req.url
-        if (url.host != FILES_HOST || !url.encodedPath.startsWith("/api/")) return req
-        val relayed = url.newBuilder()
-            .host(RELAY_HOST)
-            .encodedPath("/api/files" + url.encodedPath.removePrefix("/api"))
-            .build()
-        return req.newBuilder().url(relayed).build()
-    }
-
 
     private fun fileClient(context: Context): OkHttpClient =
         httpClient(context).newBuilder()
@@ -161,17 +146,21 @@ object ApiClient {
     } catch (e: Exception) { null }
 
     fun postBody(context: Context, url: String, body: okhttp3.RequestBody,
+                 headers: Map<String, String> = emptyMap(), onCall: (okhttp3.Call) -> Unit = {}): Pair<Int, ByteArray>? =
+        sendBody(context, "POST", url, body, headers, onCall)
+
+    fun sendBody(context: Context, method: String, url: String, body: okhttp3.RequestBody,
                  headers: Map<String, String> = emptyMap(), onCall: (okhttp3.Call) -> Unit = {}): Pair<Int, ByteArray>? = try {
-        val req = Request.Builder().url(url).post(body)
+        val req = Request.Builder().url(url).method(method, body)
             .apply { headers.forEach { (k, v) -> header(k, v) } }
             .build()
         val call = uploadClient(context).newCall(req)
         onCall(call)
         call.execute().use { it.code to (it.body?.bytes() ?: ByteArray(0)) }
-    } catch (e: Exception) { Log.w("ApiClient", "POST plik: ${e.javaClass.simpleName}: ${e.message}"); null }
+    } catch (e: Exception) { Log.w("ApiClient", "$method plik: ${e.javaClass.simpleName}: ${e.message}"); null }
 
     fun getToFile(context: Context, url: String, headers: Map<String, String>, target: java.io.File,
-                  onProgress: ((Float) -> Unit)? = null): Int? = try {
+                  onProgress: ((Float) -> Unit)? = null, isCancelled: () -> Boolean = { false }): Int? = try {
         val req = Request.Builder().url(url)
             .apply { headers.forEach { (k, v) -> header(k, v) } }
             .build()
@@ -184,6 +173,7 @@ object ApiClient {
                 body.byteStream().use { input ->
                     java.io.BufferedOutputStream(java.io.FileOutputStream(target), 256 * 1024).use { out ->
                         while (true) {
+                            if (isCancelled()) throw java.io.IOException("anulowano")
                             val n = input.read(buf)
                             if (n < 0) break
                             out.write(buf, 0, n)
@@ -336,6 +326,28 @@ object ApiClient {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putString(KEY_JWT, token).apply()
     }
+
+    @Volatile private var refreshTriedAt = 0L
+
+    private fun tokenExpiryMs(token: String): Long? = runCatching {
+        val part = token.split(".")[1]
+        val json = String(android.util.Base64.decode(part,
+            android.util.Base64.URL_SAFE or android.util.Base64.NO_PADDING or android.util.Base64.NO_WRAP), Charsets.UTF_8)
+        JSONObject(json).optLong("exp", 0L) * 1000L
+    }.getOrNull()?.takeIf { it > 0L }
+
+    fun refreshTokenIfOld(context: Context) {
+        val token = getToken(context) ?: return
+        val expiry = tokenExpiryMs(token) ?: return
+        if (expiry - System.currentTimeMillis() > TOKEN_REFRESH_BEFORE_MS) return
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (refreshTriedAt != 0L && now - refreshTriedAt < 3_600_000L) return
+        refreshTriedAt = now
+        val fresh = post("/api/token/refresh", JSONObject(), context)?.optString("token")
+        if (!fresh.isNullOrBlank() && getToken(context) == token) saveToken(context, fresh)
+    }
+
+    private const val TOKEN_REFRESH_BEFORE_MS = 20L * 24 * 3600 * 1000
 
     fun clearToken(context: Context) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)

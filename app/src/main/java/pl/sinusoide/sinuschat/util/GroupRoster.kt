@@ -52,6 +52,36 @@ object GroupRoster {
         if (s.remove(hash)) store(ctx, groupId, s)
     }
 
+    @Synchronized
+    fun renameMember(ctx: Context, oldHash: String, newHash: String) {
+        if (oldHash.isEmpty() || newHash.isEmpty() || oldHash == newHash) return
+        try {
+            for (groupId in prefs(ctx).all.keys) {
+                val s = known(ctx, groupId) ?: continue
+                if (s.remove(oldHash)) {
+                    s.add(newHash)
+                    store(ctx, groupId, s)
+                }
+            }
+        } catch (_: Exception) {}
+    }
+
+    @Synchronized
+    fun applyMove(ctx: Context, groupId: String, oldHash: String, newHash: String): Boolean {
+        if (oldHash.isEmpty() || newHash.isEmpty() || oldHash == newHash) return false
+        val s = known(ctx, groupId) ?: return false
+        if (!s.remove(oldHash)) return false
+        s.add(newHash)
+        store(ctx, groupId, s)
+        if (ContactCache.getName(ctx, newHash).isNullOrBlank()) {
+            ContactCache.realName(ctx, oldHash)?.takeIf { it.isNotBlank() }?.let { ContactCache.saveName(ctx, newHash, it) }
+        }
+        if (newHash != pl.sinusoide.sinuschat.setup.SetupActivity.getUserPhoneHash(ctx)) {
+            GroupSystemMessages.emailChanged(ctx, groupId, newHash)
+        }
+        return true
+    }
+
     fun members(ctx: Context, groupId: String): Set<String>? = known(ctx, groupId)
 
     fun allMembers(ctx: Context): Set<String> = try {

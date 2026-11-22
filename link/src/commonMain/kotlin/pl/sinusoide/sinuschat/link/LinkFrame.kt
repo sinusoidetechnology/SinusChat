@@ -35,6 +35,23 @@ data class TranslateChat(val conv: String, val name: String, val lang: String = 
 data class IceServer(val urls: List<String>, val username: String = "", val credential: String = "")
 
 @Serializable
+data class GroupMemberInfo(
+    val hash: String,
+    val name: String,
+    val color: String = "#5288C1",
+    val admin: Boolean = false,
+    val avatar: String = ""
+)
+
+@Serializable
+data class GroupRights(
+    val editSettings: Boolean = true,
+    val sendMessages: Boolean = true,
+    val addMembers: Boolean = true,
+    val callGroup: Boolean = true
+)
+
+@Serializable
 data class ChatMessage(
     val id: String,
     val conv: String,
@@ -484,6 +501,102 @@ sealed class LinkFrame {
     @SerialName("call_end")
     data class CallEnd(val call: String, val reason: String = "", val seconds: Int = 0, val connected: Boolean = false) : LinkFrame()
 
+    @Serializable
+    @SerialName("group_get")
+    data class GroupRequest(val conv: String) : LinkFrame()
+
+    @Serializable
+    @SerialName("group")
+    data class GroupInfo(
+        val conv: String,
+        val name: String = "",
+        val color: String = "#5288C1",
+        val me: String = "",
+        val members: List<GroupMemberInfo> = emptyList(),
+        val active: Int = 0,
+        val admin: Boolean = false,
+        val createdBy: String = "",
+        val rights: GroupRights = GroupRights(),
+        val ttlMs: Long = 0L,
+        val trigger: String = "",
+        val muteUntil: Long = 0L,
+        val ok: Boolean = true
+    ) : LinkFrame()
+
+    @Serializable
+    @SerialName("group_set")
+    data class GroupUpdate(
+        val conv: String,
+        val req: String = "",
+        val name: String? = null,
+        val color: String? = null,
+        val avatarReq: String? = null,
+        val removeAvatar: Boolean = false,
+        val rights: GroupRights? = null,
+        val ttlMs: Long? = null,
+        val trigger: String? = null,
+        val muteUntil: Long? = null,
+        val clearChat: Boolean = false
+    ) : LinkFrame()
+
+    @Serializable
+    @SerialName("group_member")
+    data class GroupMemberAction(val conv: String, val req: String, val member: String, val action: String) : LinkFrame()
+
+    @Serializable
+    @SerialName("group_leave")
+    data class GroupLeave(val conv: String, val req: String, val silent: Boolean = false) : LinkFrame()
+
+    @Serializable
+    @SerialName("group_result")
+    data class GroupResult(val conv: String, val req: String, val ok: Boolean, val error: String = "") : LinkFrame()
+
+    @Serializable
+    @SerialName("gcall_state")
+    data class GroupCallState(
+        val conv: String,
+        val active: Boolean,
+        val video: Boolean = false,
+        val startedBy: String = "",
+        val startedAt: Long = 0L,
+        val members: List<String> = emptyList(),
+        val names: Map<String, String> = emptyMap(),
+        val title: String = "",
+        val ringMs: Long = 0L
+    ) : LinkFrame()
+
+    @Serializable
+    @SerialName("gcall_query")
+    data class GroupCallQuery(val conv: String) : LinkFrame()
+
+    @Serializable
+    @SerialName("gcall_join")
+    data class GroupCallJoin(val call: String, val conv: String, val video: Boolean, val start: Boolean) : LinkFrame()
+
+    @Serializable
+    @SerialName("gcall_setup")
+    data class GroupCallSetup(
+        val call: String,
+        val conv: String,
+        val me: String,
+        val video: Boolean,
+        val ice: List<IceServer>,
+        val relayOnly: Boolean = false,
+        val title: String = ""
+    ) : LinkFrame()
+
+    @Serializable
+    @SerialName("gcall_signal")
+    data class GroupCallSignal(val call: String, val peer: String, val body: String) : LinkFrame()
+
+    @Serializable
+    @SerialName("gcall_leave")
+    data class GroupCallLeave(val call: String, val conv: String = "", val reason: String = "") : LinkFrame()
+
+    @Serializable
+    @SerialName("gcall_decline")
+    data class GroupCallDecline(val conv: String) : LinkFrame()
+
     companion object {
         const val BYE_UNPAIRED = "unpaired"
         const val BYE_CLOSING = "closing"
@@ -549,6 +662,14 @@ sealed class LinkFrame {
         const val CALL_FAILED = "failed"
         const val CALL_ON_PHONE = "on_phone"
         const val CALL_GROUP = "group"
+        const val CALL_FORBIDDEN = "forbidden"
+        const val CALL_ALONE = "alone"
+
+        const val GROUP_ADD = "add"
+        const val GROUP_KICK = "kick"
+        const val GROUP_ADMIN = "admin"
+        const val GROUP_UNADMIN = "unadmin"
+        const val GROUP_NAME_MAX = 50
 
         const val PROXIMITY_ON = "on"
         const val PROXIMITY_OFF = "off"

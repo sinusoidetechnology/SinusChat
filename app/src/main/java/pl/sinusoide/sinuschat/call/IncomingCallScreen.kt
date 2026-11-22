@@ -109,7 +109,7 @@ object IncomingCallScreen {
         val actions: View
         val actionsHeight: Int
         var bounce: Runnable? = null
-        if (phoneLocked) {
+        if (phoneLocked && !pl.sinusoide.sinuschat.ui.A11y.enabled(activity)) {
             val arc = pl.sinusoide.sinuschat.ui.ArcAnswerView(activity, palette, onAnswer = onAnswer, onDecline = onDecline)
             actionsHeight = ((if (wide) minOf(262, cfg.screenHeightDp - 40) else 262) * dp).toInt()
             arc.alpha = 0f; arc.translationY = 30 * dp

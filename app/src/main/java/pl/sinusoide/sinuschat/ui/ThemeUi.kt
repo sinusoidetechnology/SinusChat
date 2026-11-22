@@ -46,7 +46,7 @@ object ThemeUi {
 
     fun textPrimary(ctx: Context) = attr(ctx, R.attr.sinuschat_text_primary, Color.WHITE)
     fun textSecondary(ctx: Context) = attr(ctx, R.attr.sinuschat_text_secondary, 0xFF7F91A4.toInt())
-    fun textMuted(ctx: Context) = attr(ctx, R.attr.sinuschat_text_muted, 0xFF5E6D7E.toInt())
+    fun textMuted(ctx: Context) = attr(ctx, R.attr.sinuschat_text_muted, 0xFF7A8B9E.toInt())
     fun surface(ctx: Context) = attr(ctx, R.attr.sinuschat_surface, 0xFF17212B.toInt())
     fun card(ctx: Context) = attr(ctx, R.attr.sinuschat_surface_elevated, 0xFF1D2A38.toInt())
     fun border(ctx: Context) = attr(ctx, R.attr.sinuschat_border, 0xFF233240.toInt())
@@ -69,7 +69,7 @@ object ThemeUi {
 
     fun rounded(ctx: Context, color: Int, radiusDp: Float): GradientDrawable = GradientDrawable().apply {
         val d = ctx.resources.displayMetrics.density
-        cornerRadius = (if (ThemeManager.isRetro(ctx)) minOf(radiusDp, 2f) else radiusDp) * d
+        cornerRadius = (if (ThemeManager.isRetro(ctx)) minOf(radiusDp, 6f) else radiusDp) * d
         setColor(color)
         if (isFlow(ctx) && isGlass(color)) setStroke((1 * d).toInt().coerceAtLeast(1), GLASS_RIM)
     }

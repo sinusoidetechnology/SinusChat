@@ -160,6 +160,7 @@ object PcLinkHub {
         sessions.remove(connection)
         updateActivity()
         PcLinkCalls.onPcGone(connection)
+        PcLinkGroupCalls.onPcGone(connection)
         if (sessions.isEmpty()) {
             PcLinkMedia.dropAll()
             notifyFrom = 0L
@@ -287,6 +288,16 @@ object PcLinkHub {
             is LinkFrame.CallStart, is LinkFrame.CallAccept, is LinkFrame.CallSignal, is LinkFrame.CallEnd ->
                 if (isLocked() && frame is LinkFrame.CallStart) connection.send(LinkFrame.CallEnd(frame.call, LinkFrame.CALL_FAILED))
                 else PcLinkCalls.onFrame(ctx, connection, frame)
+            is LinkFrame.GroupRequest, is LinkFrame.GroupUpdate, is LinkFrame.GroupMemberAction, is LinkFrame.GroupLeave ->
+                if (isLocked()) connection.send(LinkFrame.PhoneState(true))
+                else {
+                    ensureObserver()
+                    PcLinkGroups.onFrame(ctx, connection, frame)
+                }
+            is LinkFrame.GroupCallJoin, is LinkFrame.GroupCallSignal, is LinkFrame.GroupCallLeave,
+            is LinkFrame.GroupCallDecline, is LinkFrame.GroupCallQuery ->
+                if (isLocked() && frame is LinkFrame.GroupCallJoin) connection.send(LinkFrame.GroupCallLeave(frame.call, frame.conv, LinkFrame.CALL_FAILED))
+                else PcLinkGroupCalls.onFrame(ctx, connection, frame)
             is LinkFrame.UploadStart -> if (!isLocked()) PcLinkMedia.uploadStart(ctx, frame)
             is LinkFrame.UploadChunk -> PcLinkMedia.uploadChunk(frame)
             is LinkFrame.UploadEnd -> PcLinkMedia.uploadEnd(frame)
@@ -367,19 +378,29 @@ object PcLinkHub {
             is LinkFrame.PinMessage ->
                 if (msg.pinned != f.pinned) MessageRepository.setPinned(ctx, conv, me, other, id, f.pinned)
             is LinkFrame.ReactMessage -> {
-                if (isGroup || BlockList.isBlocked(ctx, other) || BlockList.isDeleted(ctx, other)) return
                 val emoji = f.emoji.trim().takeIf { it.isNotEmpty() && it.length <= MAX_EMOJI && it.none { c -> c.isWhitespace() } }
                 val current = msg.reactions[me]
                 val next = if (emoji == null || emoji == current) null else emoji
                 if (next == null && current == null) return
+                if (isGroup) {
+                    MessageRepository.applyReactionPatchBlocking(ctx, conv, id, me, next)
+                    GroupRepository.sendPatchBlocking(ctx, conv, me, GroupRepository.KIND_REACT, GroupRepository.canonicalId(id, me), next.orEmpty())
+                    return
+                }
+                if (BlockList.isBlocked(ctx, other) || BlockList.isDeleted(ctx, other)) return
                 val secret = secretFor(ctx, other) ?: return
                 MessageRepository.setReaction(ctx, conv, me, other, secret, id, next)
             }
             is LinkFrame.EditMessage -> {
-                if (isGroup || msg.senderHash != me || msg.type != MessageEntity.TYPE_TEXT) return
-                if (BlockList.isBlocked(ctx, other) || BlockList.isDeleted(ctx, other)) return
+                if (msg.senderHash != me || msg.type != MessageEntity.TYPE_TEXT) return
                 val text = f.text.trim().take(MAX_TEXT)
                 if (text.isEmpty() || text == msg.text) return
+                if (isGroup) {
+                    MessageRepository.applyEditPatchBlocking(ctx, conv, me, id, text)
+                    GroupRepository.sendPatchBlocking(ctx, conv, me, GroupRepository.KIND_EDIT, GroupRepository.canonicalId(id, me), text)
+                    return
+                }
+                if (BlockList.isBlocked(ctx, other) || BlockList.isDeleted(ctx, other)) return
                 val secret = secretFor(ctx, other) ?: return
                 MessageRepository.editMessageEverywhere(ctx, conv, me, other, secret, id, text)
             }
@@ -490,8 +511,21 @@ object PcLinkHub {
         val wav = PcLinkMedia.takeStaged(f.req, LinkFrame.MAX_UPLOAD_BYTES) ?: return fail(LinkFrame.ERROR_FAILED)
         val ogg = java.io.File(ctx.cacheDir, "voice_pc_${java.util.UUID.randomUUID()}.ogg")
         try {
-            if (GroupRepository.isGroup(f.conv)) return fail(LinkFrame.ERROR_GROUP_VOICE)
             val me = me(ctx)
+            if (GroupRepository.isGroup(f.conv)) {
+                if (groupReadOnly[f.conv] == true) return fail(LinkFrame.ERROR_READ_ONLY)
+                val pcm = PcLinkVoice.readWav(wav) ?: return fail(LinkFrame.ERROR_FAILED)
+                val ms = PcLinkVoice.durationMs(pcm)
+                if (ms < 1_000L) return fail(LinkFrame.ERROR_TOO_SHORT)
+                if (ms > LinkFrame.VOICE_MAX_MS + 5_000L) return fail(LinkFrame.ERROR_TOO_BIG)
+                if (!PcLinkVoice.encodeOgg(pcm, ogg)) return fail(LinkFrame.ERROR_FAILED)
+                val up = pl.sinusoide.sinuschat.util.FileUploader.uploadVoiceBlocking(ctx, ogg, GroupRepository.voiceDownloads(ctx, f.conv, me))
+                    ?: return fail(LinkFrame.ERROR_FAILED)
+                if (!GroupRepository.sendVoiceBlocking(ctx, f.conv, me, up.first, up.second, (ms / 1000L).toInt().coerceAtLeast(1), ogg))
+                    return fail(LinkFrame.ERROR_FAILED)
+                scheduleList(refresh = false)
+                return LinkFrame.UploadResult(f.batch, true)
+            }
             val other = otherOf(f.conv, me) ?: return fail(LinkFrame.ERROR_FAILED)
             if (BlockList.isBlocked(ctx, other)) return fail(LinkFrame.ERROR_BLOCKED)
             if (BlockList.isDeleted(ctx, other)) return fail(LinkFrame.ERROR_DELETED)
@@ -522,8 +556,11 @@ object PcLinkHub {
             is LinkFrame.MediaListRequest -> f.conv
             else -> return
         }
-        if (GroupRepository.isGroup(conv)) return
         val me = me(ctx)
+        if (GroupRepository.isGroup(conv)) {
+            if (f is LinkFrame.MediaListRequest) conn.send(mediaList(ctx, conv, me, f.limit))
+            return
+        }
         val other = otherOf(conv, me) ?: return
         when (f) {
             is LinkFrame.ContactRequest -> conn.send(contactInfo(ctx, conv, other))
@@ -533,21 +570,23 @@ object PcLinkHub {
                 scheduleList(refresh = false)
             }
             is LinkFrame.SafetyRequest -> conn.send(safetyNumber(ctx, conv, me, other))
-            is LinkFrame.MediaListRequest -> {
-                val limit = f.limit.coerceIn(1, MAX_MEDIA_LIST)
-                val rows = SinusChatDatabase.getInstance(ctx).messageDao().getAllForConversationSync(conv)
-                val picked = alive(rows).asSequence().filter { m ->
-                    when {
-                        m.isSystemMessage || m.viewOnce -> false
-                        m.type == MessageEntity.TYPE_ATTACHMENT -> m.fileId != null && !(m.attachmentName ?: "").startsWith("location_")
-                        m.type == MessageEntity.TYPE_TEXT -> linkPattern.containsMatchIn(m.text)
-                        else -> false
-                    }
-                }.take(limit).toList()
-                conn.send(LinkFrame.MediaList(conv, picked.map { toMessage(ctx, it, me, null) }))
-            }
+            is LinkFrame.MediaListRequest -> conn.send(mediaList(ctx, conv, me, f.limit))
             else -> Unit
         }
+    }
+
+    private fun mediaList(ctx: Context, conv: String, me: String, requested: Int): LinkFrame.MediaList {
+        val limit = requested.coerceIn(1, MAX_MEDIA_LIST)
+        val rows = SinusChatDatabase.getInstance(ctx).messageDao().getAllForConversationSync(conv)
+        val picked = alive(rows).asSequence().filter { m ->
+            when {
+                m.isSystemMessage || m.viewOnce -> false
+                m.type == MessageEntity.TYPE_ATTACHMENT -> m.fileId != null && !(m.attachmentName ?: "").startsWith("location_")
+                m.type == MessageEntity.TYPE_TEXT -> linkPattern.containsMatchIn(m.text)
+                else -> false
+            }
+        }.take(limit).toList()
+        return LinkFrame.MediaList(conv, picked.map { toMessage(ctx, it, me, groupNames[conv]) })
     }
 
     private fun contactInfo(ctx: Context, conv: String, other: String): LinkFrame.ContactInfo {
@@ -731,6 +770,8 @@ object PcLinkHub {
     private fun localTime(serverMs: Long): Long =
         if (serverMs <= 0L) 0L
         else System.currentTimeMillis() - pl.sinusoide.sinuschat.util.ServerTime.ageMs(serverMs).coerceAtLeast(0L)
+
+    fun avatarTokenOf(ctx: Context, key: String): String = avatarToken(ctx, key)
 
     private fun avatarToken(ctx: Context, key: String): String {
         val raw = ContactCache.storedAvatarUrl(ctx, key)?.takeIf { it.isNotBlank() && it != "null" } ?: return ""

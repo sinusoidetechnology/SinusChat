@@ -88,7 +88,7 @@ class MessageAdapter(
         super.submitList(shown) {
             for (id in changed) {
                 val i = currentList.indexOfFirst { it.id == id }
-                if (i >= 0) notifyItemChanged(i)
+                if (i >= 0) notifyItemChanged(i, ALBUM_PAYLOAD)
             }
             commitCallback?.run()
         }
@@ -236,6 +236,8 @@ class MessageAdapter(
 
     companion object {
         private const val BADGE_TAG = "upload_badge"
+        private const val ALBUM_PROGRESS_TAG = "album_progress"
+        private const val ALBUM_PAYLOAD = "album"
         private const val VIDEO_CHIP_TAG = "video_chip"
         private const val GONE_TAG = "media_gone"
         private const val SNIPPET_TEXT_TAG = "snippet_text"
@@ -245,6 +247,7 @@ class MessageAdapter(
         private val DIFF = object : DiffUtil.ItemCallback<MessageEntity>() {
             override fun areItemsTheSame(a: MessageEntity, b: MessageEntity) = a.id == b.id
             override fun areContentsTheSame(a: MessageEntity, b: MessageEntity) = a == b
+            override fun getChangePayload(a: MessageEntity, b: MessageEntity): Any = ALBUM_PAYLOAD
         }
     }
 
@@ -360,7 +363,7 @@ class MessageAdapter(
         (holder.image?.parent as? ViewGroup)?.let { f ->
             for (i in f.childCount - 1 downTo 0) if (f.getChildAt(i).tag == VIDEO_CHIP_TAG) f.removeViewAt(i)
         }
-        holder.album?.let { it.removeAllViews(); it.visibility = View.GONE }
+        if (albums[item.id] == null) holder.album?.let { it.removeAllViews(); it.tag = null; it.visibility = View.GONE }
         holder.onceRow?.visibility = View.GONE
         holder.onceIcon?.removeAllViews()
         holder.docIcon?.visibility = View.VISIBLE
@@ -476,7 +479,8 @@ class MessageAdapter(
             }
             voiceContainer.removeAllViews()
 
-            val btnPlay = android.widget.ImageButton(ctx).apply {
+            val btnPlay = VoicePlayButton(ctx, ctx.getString(R.string.a11y_play_voice, voiceTime(durationSec)),
+                ctx.getString(R.string.a11y_pause_voice)).apply {
                 setImageResource(R.drawable.ic_play_voice)
                 setBackgroundResource(0)
                 setColorFilter(if (isMine) android.graphics.Color.WHITE else pl.sinusoide.sinuschat.ui.ThemeUi.accent(ctx))
@@ -655,7 +659,33 @@ class MessageAdapter(
                 }
             }
             voiceContainer.visibility = View.VISIBLE
+            val transcript = pl.sinusoide.sinuschat.util.VoiceTranscriber.cache[item.id]
+            val transcribing = pl.sinusoide.sinuschat.util.VoiceTranscriber.isBusy(item.id)
+            var tvTranscript = holder.itemView.getTag(R.id.voice_transcript) as? android.widget.TextView
+            if (transcript != null || transcribing) {
+                if (tvTranscript == null) {
+                    tvTranscript = android.widget.TextView(ctx).apply {
+                        textSize = 14.5f
+                        setPadding((14 * dp).toInt(), 0, (14 * dp).toInt(), (6 * dp).toInt())
+                    }
+                    (voiceContainer.parent as? android.view.ViewGroup)?.let { parent ->
+                        parent.addView(tvTranscript, parent.indexOfChild(voiceContainer) + 1,
+                            android.widget.LinearLayout.LayoutParams((240 * dp).toInt(), android.widget.LinearLayout.LayoutParams.WRAP_CONTENT))
+                    }
+                    holder.itemView.setTag(R.id.voice_transcript, tvTranscript)
+                }
+                tvTranscript.setTextColor(if (isMine) android.graphics.Color.WHITE else pl.sinusoide.sinuschat.ui.ThemeUi.textPrimary(ctx))
+                tvTranscript.text = transcript ?: ctx.getString(R.string.voice_transcribing)
+                tvTranscript.alpha = if (transcript == null) 0.7f else 1f
+                tvTranscript.visibility = View.VISIBLE
+            } else {
+                tvTranscript?.visibility = View.GONE
+            }
         } else {
+            (holder.itemView.getTag(R.id.voice_transcript) as? android.view.View)?.let { tv ->
+                (tv.parent as? android.view.ViewGroup)?.removeView(tv)
+            }
+            holder.itemView.setTag(R.id.voice_transcript, null)
             (holder.itemView.tag as? android.widget.LinearLayout)?.let { ll ->
                 for (i in 0 until ll.childCount) {
                     val old = ll.getChildAt(i) as? WaveformView ?: continue
@@ -935,8 +965,10 @@ class MessageAdapter(
         if (item.edited) {
             holder.time.setCompoundDrawablesRelativeWithIntrinsicBounds(R.drawable.ic_edit, 0, 0, 0)
             holder.time.compoundDrawablePadding = (3 * ctx.resources.displayMetrics.density).toInt()
+            holder.time.contentDescription = ctx.getString(R.string.a11y_edited, timeStr)
         } else {
             holder.time.setCompoundDrawablesRelativeWithIntrinsicBounds(0, 0, 0, 0)
+            holder.time.contentDescription = null
         }
 
         holder.timerSlot?.let { slot ->
@@ -973,8 +1005,16 @@ class MessageAdapter(
             if (flowUi(ctx)) holder.bubble.background = pl.sinusoide.sinuschat.ui.FlowGlass.bubble(ctx, mine = true)
             else if (retroUi(ctx)) holder.bubble.background = android.graphics.drawable.ColorDrawable(pl.sinusoide.sinuschat.ui.RetroUi.ROW_MINE)
             else holder.bubble.setBackgroundResource(R.drawable.bg_bubble_mine)
+            holder.text?.setTextColor(if (flowUi(ctx) || retroUi(ctx)) pl.sinusoide.sinuschat.ui.ThemeUi.textPrimary(ctx) else Color.WHITE)
             holder.time.setTextColor(if (retroUi(ctx)) pl.sinusoide.sinuschat.ui.RetroUi.TIME_MINE else Color.parseColor("#B0D4F1"))
             holder.statusIcon!!.visibility = View.VISIBLE
+            holder.statusIcon.contentDescription = ctx.getString(when (item.status) {
+                "read" -> R.string.a11y_status_read
+                "delivered" -> R.string.a11y_status_delivered
+                "sent" -> R.string.a11y_status_sent
+                "failed", MessageEntity.STATUS_UNDELIVERED -> R.string.a11y_status_failed
+                else -> R.string.a11y_status_pending
+            })
             val otherHash = otherHashOfConversation()
             if (BlockList.isBlockedByThem(holder.itemView.context, otherHash) && item.status == "pending") {
                 holder.statusIcon.setImageResource(R.drawable.ic_close)
@@ -1011,6 +1051,7 @@ class MessageAdapter(
             if (flowUi(ctx)) holder.bubble.background = pl.sinusoide.sinuschat.ui.FlowGlass.bubble(ctx, mine = false)
             else if (retroUi(ctx)) holder.bubble.background = android.graphics.drawable.ColorDrawable(pl.sinusoide.sinuschat.ui.RetroUi.ROW_OTHER)
             else holder.bubble.setBackgroundResource(R.drawable.bg_bubble_other)
+            holder.text?.setTextColor(pl.sinusoide.sinuschat.ui.ThemeUi.textPrimary(ctx))
             holder.time.setTextColor(if (retroUi(ctx)) pl.sinusoide.sinuschat.ui.RetroUi.TIME_MINE else Color.parseColor("#999999"))
             holder.statusIcon!!.visibility = View.GONE
         }
@@ -1481,64 +1522,49 @@ class MessageAdapter(
         holder.docCard!!.visibility = View.GONE
         holder.text!!.visibility = View.GONE
         val grid = holder.album ?: return
-        grid.removeAllViews()
         grid.visibility = View.VISIBLE
+        val shown = members.take(4)
+        val more = members.size - shown.size
+        val key = item.id + "|" + members.joinToString(",") { it.id }
+        if (grid.tag != key || grid.getChildAt(0) !is FrameLayout) {
+            grid.removeAllViews()
+            grid.tag = key
+            buildAlbum(grid, shown, more, d)
+        }
+        val box = grid.getChildAt(0) as FrameLayout
+        val tiles = ArrayList<FrameLayout>()
+        fun collect(v: View) {
+            if (v is FrameLayout && v.getTag(R.id.album_tile) != null) tiles += v
+            else if (v is ViewGroup) for (i in 0 until v.childCount) collect(v.getChildAt(i))
+        }
+        collect(box.getChildAt(0))
+        tiles.sortBy { it.getTag(R.id.album_tile) as Int }
+        tiles.forEachIndexed { i, tile -> shown.getOrNull(i)?.let { refreshTile(tile, it, item, members, isMine, holder) } }
+        refreshAlbumProgress(box, members, isMine, d)
+    }
+
+    private fun buildAlbum(grid: LinearLayout, shown: List<MessageEntity>, more: Int, d: Float) {
+        val ctx = grid.context
         val width = (246 * d).toInt()
         val gap = (2 * d).toInt()
         val half = (width - gap) / 2
-        val shown = members.take(4)
-        val more = members.size - shown.size
-
-        fun tile(index: Int, w: Int, h: Int): View {
-            val m = shown[index]
-            val file = MediaManager.getMediaFile(ctx, conversationId, m.id, m.attachmentName ?: "")
-            val have = file.exists() && file.length() > 0
-            val uploading = isMine && m.fileId.isNullOrEmpty()
-            return FrameLayout(ctx).apply {
-                layoutParams = LinearLayout.LayoutParams(w, h)
-                setBackgroundColor(0xFF22303C.toInt())
-                val iv = ImageView(ctx).apply { scaleType = ImageView.ScaleType.CENTER_CROP }
-                addView(iv, FrameLayout.LayoutParams(-1, -1))
-                if (have) Glide.with(iv).load(file).centerCrop().into(iv)
-                val badge = (44 * d).toInt()
-                when {
-                    uploading && m.status == MessageEntity.STATUS_FAILED ->
-                        addView(retryBadge(ctx, m, Color.WHITE, 0x73000000, 11), FrameLayout.LayoutParams(badge, badge, Gravity.CENTER))
-                    uploading ->
-                        addView(ring(ctx, m, Color.WHITE, 0x73000000), FrameLayout.LayoutParams(badge, badge, Gravity.CENTER))
-                    !have && AttachmentDownloader.isActive(m.id) ->
-                        addView(downloadRing(ctx, m, Color.WHITE, 0x73000000), FrameLayout.LayoutParams(badge, badge, Gravity.CENTER))
-                    !have -> addView(ImageView(ctx).apply {
-                        setImageResource(if (pl.sinusoide.sinuschat.util.MediaGone.isGone(ctx, m.id)) R.drawable.ic_no_media else R.drawable.ic_download)
-                        setColorFilter(Color.WHITE)
-                        background = android.graphics.drawable.GradientDrawable().apply {
-                            shape = android.graphics.drawable.GradientDrawable.OVAL; setColor(0x73000000)
-                        }
-                        val p = (11 * d).toInt(); setPadding(p, p, p, p)
-                    }, FrameLayout.LayoutParams(badge, badge, Gravity.CENTER))
-                }
-                if (index == shown.lastIndex && more > 0) addView(TextView(ctx).apply {
-                    text = "+$more"
-                    textSize = 24f
-                    setTextColor(Color.WHITE)
-                    typeface = android.graphics.Typeface.DEFAULT_BOLD
-                    gravity = Gravity.CENTER
-                    setBackgroundColor(0x8C000000.toInt())
-                }, FrameLayout.LayoutParams(-1, -1))
-                setOnClickListener {
-                    when {
-                        isSelectionMode -> toggleSelection(item.id)
-                        uploading -> Unit
-                        !have && pl.sinusoide.sinuschat.util.MediaGone.isGone(ctx, m.id) -> explainGone(ctx, m)
-                        !have -> onMediaDownload?.invoke(m)
-                        else -> onMediaOpen?.invoke(members, members.indexOf(m).coerceAtLeast(0))
-                    }
-                }
-                setOnLongClickListener {
-                    if (isSelectionMode) toggleSelection(item.id) else onLongPress?.invoke(item, holder.itemView)
-                    true
-                }
-            }
+        val box = FrameLayout(ctx)
+        val rows = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
+        box.addView(rows, FrameLayout.LayoutParams(-2, -2))
+        grid.addView(box, LinearLayout.LayoutParams(-2, -2))
+        fun tile(index: Int, w: Int, h: Int): View = FrameLayout(ctx).apply {
+            setTag(R.id.album_tile, index)
+            layoutParams = LinearLayout.LayoutParams(w, h)
+            setBackgroundColor(0xFF22303C.toInt())
+            addView(ImageView(ctx).apply { scaleType = ImageView.ScaleType.CENTER_CROP }, FrameLayout.LayoutParams(-1, -1))
+            if (index == shown.lastIndex && more > 0) addView(TextView(ctx).apply {
+                text = "+$more"
+                textSize = 24f
+                setTextColor(Color.WHITE)
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                gravity = Gravity.CENTER
+                setBackgroundColor(0x8C000000.toInt())
+            }, FrameLayout.LayoutParams(-1, -1))
         }
         fun row(vararg tiles: View) = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -1548,15 +1574,15 @@ class MessageAdapter(
             }
         }
         when (shown.size) {
-            2 -> grid.addView(row(tile(0, half, (170 * d).toInt()), tile(1, half, (170 * d).toInt())))
+            2 -> rows.addView(row(tile(0, half, (170 * d).toInt()), tile(1, half, (170 * d).toInt())))
             3 -> {
-                grid.addView(tile(0, width, (150 * d).toInt()))
-                grid.addView(row(tile(1, half, half), tile(2, half, half)),
+                rows.addView(tile(0, width, (150 * d).toInt()))
+                rows.addView(row(tile(1, half, half), tile(2, half, half)),
                     LinearLayout.LayoutParams(-2, -2).apply { topMargin = gap })
             }
             else -> {
-                grid.addView(row(tile(0, half, half), tile(1, half, half)))
-                grid.addView(row(tile(2, half, half), tile(3, half, half)),
+                rows.addView(row(tile(0, half, half), tile(1, half, half)))
+                rows.addView(row(tile(2, half, half), tile(3, half, half)),
                     LinearLayout.LayoutParams(-2, -2).apply { topMargin = gap })
             }
         }
@@ -1566,6 +1592,98 @@ class MessageAdapter(
                 outline.setRoundRect(0, 0, view.width, view.height, 14 * d)
             }
         }
+    }
+
+    private fun albumUploading(m: MessageEntity, isMine: Boolean) =
+        isMine && m.fileId.isNullOrEmpty() && m.status != MessageEntity.STATUS_FAILED
+
+    private fun albumFailed(m: MessageEntity, isMine: Boolean) =
+        isMine && m.fileId.isNullOrEmpty() && m.status == MessageEntity.STATUS_FAILED
+
+    private fun refreshTile(tile: FrameLayout, m: MessageEntity, item: MessageEntity, members: List<MessageEntity>,
+                            isMine: Boolean, holder: VH) {
+        val ctx = tile.context
+        val d = ctx.resources.displayMetrics.density
+        val file = MediaManager.getMediaFile(ctx, conversationId, m.id, m.attachmentName ?: "")
+        val have = file.exists() && file.length() > 0
+        val iv = tile.getChildAt(0) as ImageView
+        val loaded = if (have) "${m.id}:${file.length()}" else null
+        if (iv.getTag(R.id.album_loaded) != loaded) {
+            iv.setTag(R.id.album_loaded, loaded)
+            if (loaded != null) Glide.with(iv).load(file).centerCrop().into(iv)
+            else { Glide.with(iv).clear(iv); iv.setImageDrawable(null) }
+        }
+        for (i in tile.childCount - 1 downTo 0) if (tile.getChildAt(i).tag == BADGE_TAG) tile.removeViewAt(i)
+        val badge = (44 * d).toInt()
+        val lp = FrameLayout.LayoutParams(badge, badge, Gravity.CENTER)
+        when {
+            albumFailed(m, isMine) -> tile.addView(retryBadge(ctx, m, Color.WHITE, 0x73000000, 11), 1, lp)
+            albumUploading(m, isMine) -> Unit
+            !have && AttachmentDownloader.isActive(m.id) -> tile.addView(downloadRing(ctx, m, Color.WHITE, 0x73000000), 1, lp)
+            !have -> tile.addView(ImageView(ctx).apply {
+                tag = BADGE_TAG
+                setImageResource(if (pl.sinusoide.sinuschat.util.MediaGone.isGone(ctx, m.id)) R.drawable.ic_no_media else R.drawable.ic_download)
+                setColorFilter(Color.WHITE)
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    shape = android.graphics.drawable.GradientDrawable.OVAL; setColor(0x73000000)
+                }
+                val p = (11 * d).toInt(); setPadding(p, p, p, p)
+            }, 1, lp)
+        }
+        tile.setOnClickListener {
+            val nowHave = file.exists() && file.length() > 0
+            when {
+                isSelectionMode -> toggleSelection(item.id)
+                albumUploading(m, isMine) -> Unit
+                !nowHave && pl.sinusoide.sinuschat.util.MediaGone.isGone(ctx, m.id) -> explainGone(ctx, m)
+                !nowHave -> onMediaDownload?.invoke(m)
+                else -> onMediaOpen?.invoke(members, members.indexOf(m).coerceAtLeast(0))
+            }
+        }
+        tile.setOnLongClickListener {
+            if (isSelectionMode) toggleSelection(item.id) else onLongPress?.invoke(item, holder.itemView)
+            true
+        }
+    }
+
+    private fun refreshAlbumProgress(box: FrameLayout, members: List<MessageEntity>, isMine: Boolean, d: Float) {
+        val ctx = box.context
+        val pending = members.filter { albumUploading(it, isMine) }
+        val old = box.findViewWithTag<LinearLayout>(ALBUM_PROGRESS_TAG)
+        if (pending.isEmpty()) {
+            old?.let { box.removeView(it) }
+            return
+        }
+        val panel = old ?: LinearLayout(ctx).apply {
+            tag = ALBUM_PROGRESS_TAG
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            addView(pl.sinusoide.sinuschat.ui.SineProgressRing(ctx).apply {
+                color = Color.WHITE
+                disc = 0x73000000
+            }, LinearLayout.LayoutParams((56 * d).toInt(), (56 * d).toInt()))
+            addView(TextView(ctx).apply {
+                textSize = 12.5f
+                setTextColor(Color.WHITE)
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    cornerRadius = 10 * d; setColor(0x8C000000.toInt())
+                }
+                setPadding((9 * d).toInt(), (3 * d).toInt(), (9 * d).toInt(), (3 * d).toInt())
+            }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = (6 * d).toInt() })
+            box.addView(this, FrameLayout.LayoutParams(-2, -2, Gravity.CENTER))
+        }
+        val ids = members.map { it.id }
+        val done = members.count { !it.fileId.isNullOrEmpty() }
+        val ring = panel.getChildAt(0) as pl.sinusoide.sinuschat.ui.SineProgressRing
+        ring.progress = {
+            var sum = 0f
+            for (id in ids) sum += if (AttachmentSender.isActive(id)) (AttachmentSender.progressOf(id) ?: 0f) else 1f
+            sum / ids.size
+        }
+        ring.setOnClickListener { pending.forEach { m -> onUploadCancel?.invoke(m) } }
+        val label = panel.getChildAt(1) as TextView
+        label.text = ctx.getString(R.string.album_upload_count, done, members.size)
     }
 
     private fun linkRing(holder: VH, create: Boolean): pl.sinusoide.sinuschat.ui.SineProgressRing? {
@@ -1756,5 +1874,13 @@ class MessageAdapter(
 
     private fun tint(iv: ImageView, hex: String) {
         val d = iv.drawable ?: return; DrawableCompat.setTint(DrawableCompat.wrap(d.mutate()), Color.parseColor(hex))
+    }
+}
+
+private class VoicePlayButton(context: android.content.Context, private val playDesc: String, private val pauseDesc: String) :
+    android.widget.ImageButton(context) {
+    override fun setImageResource(resId: Int) {
+        super.setImageResource(resId)
+        contentDescription = if (resId == R.drawable.ic_pause) pauseDesc else playDesc
     }
 }

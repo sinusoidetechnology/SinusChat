@@ -154,7 +154,7 @@ object CallNotifier {
         if (silent) builder.setSilent(true)
         else builder.setFullScreenIntent(fullScreenPi, true)
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !silent) {
             val caller = Person.Builder().setName(fromName).setImportant(true).build()
             builder.setStyle(
                 NotificationCompat.CallStyle.forIncomingCall(caller, declinePi, answerPi)
@@ -166,8 +166,9 @@ object CallNotifier {
 
         try {
             NotificationManagerCompat.from(ctx).notify(NOTIF_ID, builder.build())
-        } catch (e: SecurityException) {
-            Log.w(TAG, "Brak POST_NOTIFICATIONS — nie mogę pokazać dzwonka", e)
+        } catch (e: Exception) {
+            Log.w(TAG, "Nie mogę pokazać dzwonka", e)
+            pl.sinusoide.sinuschat.util.LinkLog.add(ctx, "call", "powiadomienie o połączeniu odrzucone: ${e.javaClass.simpleName}")
         }
 
         CallRinger.start(ctx, conversationId, silent)

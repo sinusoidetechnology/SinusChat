@@ -285,7 +285,7 @@ class MainActivity : AppCompatActivity() {
         if (ThemeManager.isRetro(this)) {
             bottomNav.background = pl.sinusoide.sinuschat.ui.RetroUi.bottomBar(this)
             findViewById<android.view.View>(R.id.main_nav_spacer).setBackgroundColor(pl.sinusoide.sinuschat.ui.RetroUi.CHROME)
-            pl.sinusoide.sinuschat.ui.RetroUi.lightStatusIcons(this)
+            pl.sinusoide.sinuschat.ui.RetroUi.darkStatusIcons(this)
         }
         viewPager.adapter = ViewPagerAdapter(this)
         viewPager.isUserInputEnabled = false

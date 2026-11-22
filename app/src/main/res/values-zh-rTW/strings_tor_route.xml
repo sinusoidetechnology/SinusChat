@@ -20,4 +20,5 @@
     <string name="tor_route_distinct_desc">路線不會兩次經過同一個國家。這是額外的保護措施：連線可能會稍微久一點，而且你的路線會和其他 Tor 使用者的路線略有不同。</string>
     <string name="tor_route_footer">Tor 會刻意將入口節點保留數個月，因為這樣能讓你更難被追蹤。中繼節點和出口節點則會定期更換。節點所在國家的資料來自 Tor 內建的 IPFire Location 資料庫（CC BY-SA 4.0）。</string>
     <string name="tor_startup_progress">正在連線到 Tor 網路… %1$d%%</string>
+    <string name="tor_route_orbot">Tor 正透過 Orbot 應用程式運作。連線路徑與節點國家請在 Orbot 中查看。</string>
 </resources>

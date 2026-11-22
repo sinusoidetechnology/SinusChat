@@ -20,4 +20,5 @@
     <string name="tor_route_distinct_desc">Trasa nie przejdzie dwa razy przez ten sam kraj. Dodatkowe zabezpieczenie: połączenie może budować się trochę dłużej, a Twoje trasy będą trochę mniej podobne do tras innych użytkowników Tora.</string>
     <string name="tor_route_footer">Węzeł wejściowy Tor celowo zostawia na kilka miesięcy, bo to utrudnia namierzenie. Środek i wyjście zmieniają się regularnie. Kraje węzłów pochodzą z bazy IPFire Location (CC BY-SA 4.0) dołączanej do Tora.</string>
     <string name="tor_startup_progress">Łączę z siecią Tor… %1$d%%</string>
+    <string name="tor_route_orbot">Tor działa przez aplikację Orbot. Trasę połączenia i kraje węzłów sprawdzisz w Orbocie.</string>
 </resources>

@@ -175,6 +175,31 @@ class GroupProfileActivity : AppCompatActivity() {
         permissionsRow = permRow
         content.addView(permRow)
 
+        val noticeRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            setPadding((16*dp).toInt(), (14*dp).toInt(), (16*dp).toInt(), (14*dp).toInt())
+            isClickable = true
+            setOnClickListener {
+                if (amIAdmin) showNoticesDialog()
+                else PopupHelper.show(this@GroupProfileActivity, getString(R.string.only_admin_change))
+            }
+        }
+        noticeRow.addView(ImageView(this).apply {
+            setImageResource(R.drawable.ic_notifications); setColorFilter(tc.accent)
+        }, LinearLayout.LayoutParams((24*dp).toInt(), (24*dp).toInt()).apply { marginEnd = (18*dp).toInt() })
+        val noticeCol = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        noticeCol.addView(TextView(this).apply {
+            text = getString(R.string.group_notices); textSize = 16f; setTextColor(tc.text)
+        })
+        noticesSubtitle = TextView(this).apply {
+            text = getString(R.string.group_notices_desc); textSize = 13f; setTextColor(tc.text2)
+        }
+        noticeCol.addView(noticesSubtitle)
+        noticeRow.addView(noticeCol)
+        noticeRow.visibility = View.GONE
+        noticesRow = noticeRow
+        content.addView(noticeRow)
+
         val invRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
             setPadding((16*dp).toInt(), (14*dp).toInt(), (16*dp).toInt(), (14*dp).toInt())
@@ -327,6 +352,7 @@ class GroupProfileActivity : AppCompatActivity() {
             pl.sinusoide.sinuschat.util.DisappearingMessages.setTtl(this, groupId, info.disappearingTtlMs)
 
             permissionsSubtitle?.text = permsSummary(info.perms)
+            noticesSubtitle?.text = noticesSummary(info.perms)
 
             muteSubtitle?.text = pl.sinusoide.sinuschat.util.MuteSettings.label(this, 
                 pl.sinusoide.sinuschat.util.MuteSettings.getMutedUntil(this, groupId))
@@ -485,6 +511,7 @@ class GroupProfileActivity : AppCompatActivity() {
         editRow?.visibility     = if (canEdit()) View.VISIBLE else View.GONE
         disappearingRow?.visibility = if (canEdit()) View.VISIBLE else View.GONE
         permissionsRow?.visibility  = if (amIAdmin) View.VISIBLE else View.GONE
+        noticesRow?.visibility      = if (amIAdmin) View.VISIBLE else View.GONE
         inviteRow?.visibility = if (amIAdmin && isCommunity) View.VISIBLE else View.GONE
     }
 
@@ -832,6 +859,69 @@ class GroupProfileActivity : AppCompatActivity() {
     private var permissionsRow: View? = null
     private var permissionsSubtitle: TextView? = null
     private var currentPerms = GroupPerms()
+    private var noticesRow: View? = null
+    private var noticesSubtitle: TextView? = null
+
+    private fun noticesSummary(p: GroupPerms): String {
+        val on = listOf(p.noticeJoin, p.noticeLeave, p.noticeEmail, p.noticeKey).count { it }
+        return when (on) {
+            4 -> getString(R.string.group_notices_all)
+            0 -> getString(R.string.group_notices_none)
+            else -> getString(R.string.group_notices_some, on, 4)
+        }
+    }
+
+    private fun showNoticesDialog() {
+        val p = currentPerms
+        var join = p.noticeJoin
+        var leave = p.noticeLeave
+        var email = p.noticeEmail
+        var key = p.noticeKey
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding((8*dp).toInt(), (8*dp).toInt(), (8*dp).toInt(), 0)
+        }
+        fun row(title: String, initial: Boolean, onChange: (Boolean) -> Unit) {
+            val r = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                setPadding((12*dp).toInt(), (10*dp).toInt(), (12*dp).toInt(), (10*dp).toInt())
+            }
+            r.addView(TextView(this@GroupProfileActivity).apply {
+                text = title; textSize = 16f; setTextColor(tc.text)
+            }, LinearLayout.LayoutParams(0, -2, 1f))
+            r.addView(Switch(this).apply {
+                isChecked = initial
+                setOnCheckedChangeListener { _, v -> onChange(v) }
+            })
+            root.addView(r)
+        }
+        root.addView(TextView(this).apply {
+            text = getString(R.string.group_notices_explain); textSize = 13f; setTextColor(tc.text2)
+            setPadding((12*dp).toInt(), (4*dp).toInt(), (12*dp).toInt(), (8*dp).toInt())
+        })
+        row(getString(R.string.group_notice_join), join) { join = it }
+        row(getString(R.string.group_notice_leave), leave) { leave = it }
+        row(getString(R.string.group_notice_email), email) { email = it }
+        row(getString(R.string.group_notice_key), key) { key = it }
+        AlertDialog.Builder(this, R.style.Theme_SinusChat_Dialog)
+            .setTitle(R.string.group_notices)
+            .setView(android.widget.ScrollView(this).apply { addView(root) })
+            .setPositiveButton(R.string.save) { _, _ ->
+                val next = currentPerms.copy(noticeJoin = join, noticeLeave = leave, noticeEmail = email, noticeKey = key)
+                if (next == currentPerms) return@setPositiveButton
+                GroupRepository.setPermissions(this, groupId, next) { ok ->
+                    if (ok) {
+                        currentPerms = next
+                        pl.sinusoide.sinuschat.util.GroupNotices.save(this, groupId, next.toJson())
+                        noticesSubtitle?.text = noticesSummary(next)
+                    } else {
+                        PopupHelper.showError(this, getString(R.string.error_save_settings))
+                    }
+                }
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
 
     private fun permsSummary(p: GroupPerms): String {
         val on = listOf(p.editSettings, p.sendMessages, p.addMembers, p.callGroup).count { it }
@@ -882,7 +972,8 @@ class GroupProfileActivity : AppCompatActivity() {
             .setTitle(R.string.group_permissions)
             .setView(android.widget.ScrollView(this).apply { addView(root) })
             .setPositiveButton(R.string.save) { _, _ ->
-                val next = GroupPerms(editSettings, sendMessages, addMembers, callGroup)
+                val next = currentPerms.copy(editSettings = editSettings, sendMessages = sendMessages,
+                    addMembers = addMembers, callGroup = callGroup)
                 if (next == currentPerms) return@setPositiveButton
                 GroupRepository.setPermissions(this, groupId, next) { ok ->
                     if (ok) {
@@ -996,8 +1087,16 @@ class GroupProfileActivity : AppCompatActivity() {
     }
 
     private fun startGroupCall(video: Boolean) {
-        PopupHelper.show(this, if (video) getString(R.string.group_video_call_soon)
-        else getString(R.string.group_voice_call_soon))
+        if (!canCall()) {
+            PopupHelper.showError(this, getString(R.string.group_cant_call))
+            return
+        }
+        val hub = pl.sinusoide.sinuschat.call.GroupCallHub
+        val running = hub.state(groupId)
+        val kind = running?.kind ?: if (video) hub.KIND_VIDEO else hub.KIND_AUDIO
+        val mode = if (running != null) pl.sinusoide.sinuschat.call.GroupCallActivity.MODE_JOIN
+            else pl.sinusoide.sinuschat.call.GroupCallActivity.MODE_START
+        startActivity(pl.sinusoide.sinuschat.call.GroupCallActivity.intent(this, groupId, kind, mode))
     }
 
     private fun openGroupSearch() {

@@ -31,22 +31,41 @@ object GroupSystemMessages {
         }
     }
 
-    fun nameOf(context: Context, hash: String): String =
-        ContactCache.getName(context, hash)?.takeIf { it.isNotBlank() }
+    fun nameOf(context: Context, hash: String): String {
+        if (hash.isNotEmpty() && hash == pl.sinusoide.sinuschat.setup.SetupActivity.getUserPhoneHash(context)) {
+            pl.sinusoide.sinuschat.setup.SetupActivity.getUserDisplayName(context).takeIf { it.isNotBlank() }?.let { return it }
+        }
+        return ContactCache.getName(context, hash)?.takeIf { it.isNotBlank() }
+            ?: ContactCache.realName(context, hash)?.takeIf { it.isNotBlank() }
             ?: context.getString(R.string.group_participant)
+    }
 
-    fun memberLeft(context: Context, groupId: String, hash: String) =
+    fun memberLeft(context: Context, groupId: String, hash: String) {
+        if (!GroupNotices.allows(context, groupId, GroupNotices.LEAVE)) return
         insert(context, groupId, context.getString(R.string.group_member_left_sys, nameOf(context, hash)))
+    }
 
-    fun memberJoined(context: Context, groupId: String, hash: String) =
+    fun memberJoined(context: Context, groupId: String, hash: String) {
+        if (!GroupNotices.allows(context, groupId, GroupNotices.JOIN)) return
         insert(context, groupId, context.getString(R.string.group_member_joined_sys, nameOf(context, hash)))
+    }
 
-    fun keyChanged(context: Context, groupId: String, hash: String, keyTag: Int) =
+    fun emailChanged(context: Context, groupId: String, hash: String) {
+        if (!GroupNotices.allows(context, groupId, GroupNotices.EMAIL)) return
+        insert(context, groupId, context.getString(R.string.group_member_email_changed_sys, nameOf(context, hash)),
+            idSuffix = "moved_${groupId.takeLast(8)}_${hash.take(16)}")
+    }
+
+    fun keyChanged(context: Context, groupId: String, hash: String, keyTag: Int) {
+        if (!GroupNotices.allows(context, groupId, GroupNotices.KEY)) return
         insert(context, groupId, context.getString(R.string.group_member_key_changed_sys, nameOf(context, hash)),
             idSuffix = "key_${hash.take(16)}_$keyTag")
+    }
 
-    fun memberRemoved(context: Context, groupId: String, hash: String) =
+    fun memberRemoved(context: Context, groupId: String, hash: String) {
+        if (!GroupNotices.allows(context, groupId, GroupNotices.LEAVE)) return
         insert(context, groupId, context.getString(R.string.group_member_removed_sys, nameOf(context, hash)))
+    }
 
     fun adminChanged(context: Context, groupId: String, hash: String, isAdmin: Boolean) =
         insert(context, groupId, context.getString(

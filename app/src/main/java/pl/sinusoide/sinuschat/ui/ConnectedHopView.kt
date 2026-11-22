@@ -56,7 +56,8 @@ class ConnectedHopView @JvmOverloads constructor(
     private fun span(ms: Float, from: Float, to: Float) = ((ms - from) / (to - from)).coerceIn(0f, 1f)
 
     override fun onDraw(canvas: Canvas) {
-        val ms = (System.nanoTime() - startNs) / 1_000_000f
+        val still = A11y.reducedMotion(context)
+        val ms = if (still) 1250f else (System.nanoTime() - startNs) / 1_000_000f
         val g = span(ms, 500f, 1100f)
         if (g > 0f) {
             glow.alpha = (255 * g).toInt()
@@ -97,6 +98,6 @@ class ConnectedHopView @JvmOverloads constructor(
             canvas.restore()
         }
         canvas.restore()
-        postInvalidateOnAnimation()
+        if (!still) postInvalidateOnAnimation()
     }
 }

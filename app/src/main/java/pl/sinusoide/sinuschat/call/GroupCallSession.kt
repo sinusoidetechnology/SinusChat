@@ -54,6 +54,7 @@ class GroupCallSession private constructor(
 
         fun start(context: Context, groupId: String, kind: String, title: String, starting: Boolean): GroupCallSession {
             current?.let { if (it.groupId == groupId && !it.ended) return it }
+            pl.sinusoide.sinuschat.pclink.PcLinkGroupCalls.onPhoneTakeover(groupId)
             val s = GroupCallSession(context.applicationContext, groupId, kind, title)
             current = s
             s.begin(starting)

@@ -53,12 +53,17 @@ class MessengerFragment : Fragment() {
     }
     private lateinit var offlineBanner: View
 
-    private var myPhoneHash: String = ""
+    private val myPhoneHash: String get() = context?.let { SetupActivity.getUserPhoneHash(it) } ?: ""
 
     private val refreshReceiver = object : android.content.BroadcastReceiver() {
         override fun onReceive(ctx: android.content.Context?, intent: android.content.Intent?) {
-            if (isOnline && myPhoneHash.isNotEmpty()) loadConversations()
+            refreshHandler.removeCallbacks(pushedRefresh)
+            refreshHandler.postDelayed(pushedRefresh, 250L)
         }
+    }
+
+    private val pushedRefresh = Runnable {
+        if (isAdded && isOnline && myPhoneHash.isNotEmpty()) loadConversations()
     }
 
     private var isOnline = true
@@ -114,7 +119,6 @@ class MessengerFragment : Fragment() {
             insets
         }
 
-        myPhoneHash = SetupActivity.getUserPhoneHash(requireContext())
 
         recycler      = view.findViewById(R.id.conversations_recycler)
         emptyView     = view.findViewById(R.id.empty_view)
@@ -358,7 +362,8 @@ class MessengerFragment : Fragment() {
             AppExecutor.main {
                 if (!isAdded) return@main
                 animateListOnce(enriched.isNotEmpty())
-                adapter.submitList(enriched)
+                val atTop = !recycler.canScrollVertically(-1)
+                adapter.submitList(enriched) { if (atTop && isAdded) recycler.scrollToPosition(0) }
                 showEmpty(enriched.isEmpty())
                 recycler.visibility  = if (enriched.isEmpty()) View.GONE  else View.VISIBLE
             }

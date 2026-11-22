@@ -18,7 +18,11 @@ import org.json.JSONObject
 object FileUploader {
 
     private const val TAG = "FileUploader"
-    private const val BASE_URL = "https://files.sinusoide.pl/api/upload.php"
+    private val FILES_API = pl.sinusoide.sinuschat.network.ApiClient.BASE_URL + "/api"
+    private val FILE_ID = Regex("[a-f0-9]{32}")
+    private val lastRefusal = ThreadLocal<String?>()
+
+    fun takeRefusal(): String? = lastRefusal.get().also { lastRefusal.remove() }
 
     data class UploadResult(
         val fileId: String,
@@ -30,10 +34,9 @@ object FileUploader {
     const val MAX_CONTENT = 150L * 1024 * 1024
     const val VOICE_DOWNLOADS = 3
     private const val MAX_CHUNKED_CIPHER = 160L * 1024 * 1024
-    private const val SINGLE_MAX = 40L * 1024 * 1024
+    private const val SINGLE_MAX = 16L * 1024 * 1024
     private const val CHUNK = 16L * 1024 * 1024
     private const val CHUNK_TRIES = 3
-    private const val CHUNK_TOKEN_MIN_MS = 270_000L
     private const val PARALLEL_PARTS = 2
 
     private fun workDir(context: Context, name: String): File = File(context.cacheDir, name).apply { mkdirs() }
@@ -127,23 +130,29 @@ object FileUploader {
         }
     }
 
-    private fun postJson(context: Context, body: okhttp3.RequestBody, onCall: ((okhttp3.Call) -> Unit)?): JSONObject? {
-        val (code, resp) = pl.sinusoide.sinuschat.network.ApiClient.postBody(context, BASE_URL, body,
-            mapOf("Accept" to "application/json", "User-Agent" to "SinusChat/5.0"), onCall ?: {}) ?: return null
-        NetworkSettings.recordSent(context, body.contentLength().coerceAtLeast(0L))
-        val text = resp.toString(Charsets.UTF_8)
-        if (!text.trimStart().startsWith("{")) { Log.e(TAG, "Upload HTTP $code: ${text.take(200)}"); return null }
-        val json = JSONObject(text)
-        if (!json.optBoolean("success", false)) { Log.e(TAG, "Upload HTTP $code: ${json.optString("error", "unknown")}"); return null }
-        return json
+    private fun authHeaders(context: Context, extra: Map<String, String> = emptyMap()): Map<String, String> {
+        val token = pl.sinusoide.sinuschat.network.ApiClient.getToken(context) ?: throw IOException("brak sesji")
+        return mapOf("Authorization" to "Bearer $token", "User-Agent" to "SinusChat/5.0") + extra
     }
 
-    private fun form(context: Context, action: String, phoneHash: String, minValidMs: Long = 30_000L): okhttp3.MultipartBody.Builder {
-        val token = fetchUploadToken(context, minValidMs) ?: throw IOException("brak tokena uploadu")
-        return okhttp3.MultipartBody.Builder().setType(okhttp3.MultipartBody.FORM)
-            .addFormDataPart("action", action)
-            .addFormDataPart("token", token)
-            .addFormDataPart("phoneHash", phoneHash)
+    private fun jsonBody(o: JSONObject) = o.toString().toRequestBody("application/json".toMediaType())
+
+    private fun call(context: Context, method: String, url: String, body: okhttp3.RequestBody,
+                     headers: Map<String, String>, onCall: ((okhttp3.Call) -> Unit)? = null): JSONObject? {
+        val (code, resp) = pl.sinusoide.sinuschat.network.ApiClient.sendBody(context, method, url, body,
+            headers + ("Accept" to "application/json"), onCall ?: {}) ?: return null
+        NetworkSettings.recordSent(context, body.contentLength().coerceAtLeast(0L))
+        val text = resp.toString(Charsets.UTF_8)
+        val json = if (text.trimStart().startsWith("{")) try { JSONObject(text) } catch (_: Exception) { null } else null
+        if (json != null && json.optBoolean("success", false)) return json
+        val error = json?.optString("error").orEmpty()
+        when {
+            code == 507 || error == "storage_full" -> lastRefusal.set("storage_full")
+            error == "daily_limit" -> lastRefusal.set("daily_limit")
+            code == 413 || error == "too_large" -> lastRefusal.set("too_large")
+        }
+        Log.e(TAG, "Plik $method HTTP $code: ${error.ifEmpty { text.take(120) }}")
+        return null
     }
 
     fun uploadEncryptedFileBlocking(
@@ -171,21 +180,17 @@ object FileUploader {
             if (isCancelled()) return null
             val fileKey = Base64.encodeToString(key + iv, Base64.NO_WRAP)
             val auth = downloadAuth(fileKey)
-            val phoneHash = SetupActivity.getUserPhoneHash(context)
-            val downloads = maxDownloads.coerceIn(1, 500).toString()
+            val downloads = maxDownloads.coerceIn(1, 500)
             val size = enc.length()
-            val json = if (size <= SINGLE_MAX) {
-                postJson(context, form(context, "upload", phoneHash)
-                    .addFormDataPart("type", "attachment")
-                    .addFormDataPart("authHash", auth)
-                    .addFormDataPart("maxDownloads", downloads)
-                    .addFormDataPart("file", "file.enc", fileBody(enc, 0, size, isCancelled) { sent ->
-                        onProgress?.invoke(sent.toFloat() / size)
-                    })
-                    .build(), onCall)
-            } else uploadChunked(context, enc, phoneHash, auth, downloads, onProgress, onCall, isCancelled)
-            json ?: return null
-            UploadResult(json.getString("fileId"), json.getString("downloadUrl"), fileKey, fileName)
+            lastRefusal.remove()
+            val fileId = if (size <= SINGLE_MAX) {
+                call(context, "POST", "$FILES_API/attachments", fileBody(enc, 0, size, isCancelled) { sent ->
+                    onProgress?.invoke(sent.toFloat() / size)
+                }, authHeaders(context, mapOf("X-File-Auth" to auth, "X-Max-Downloads" to downloads.toString())), onCall)
+                    ?.optString("fileId")
+            } else uploadChunked(context, enc, auth, downloads, onProgress, onCall, isCancelled)
+            val id = fileId?.takeIf { FILE_ID.matches(it) } ?: return null
+            UploadResult(id, "", fileKey, fileName)
         } catch (e: Exception) {
             Log.e(TAG, "uploadEncryptedFile fail", e)
             null
@@ -194,18 +199,15 @@ object FileUploader {
         }
     }
 
-    private fun uploadChunked(context: Context, enc: File, phoneHash: String, auth: String, downloads: String,
+    private fun uploadChunked(context: Context, enc: File, auth: String, downloads: Int,
                               onProgress: ((Float) -> Unit)?, onCall: ((okhttp3.Call) -> Unit)?,
-                              isCancelled: () -> Boolean): JSONObject? {
+                              isCancelled: () -> Boolean): String? {
         val total = enc.length()
         val parts = ((total + CHUNK - 1) / CHUNK).toInt()
-        val init = postJson(context, form(context, "chunk_init", phoneHash)
-            .addFormDataPart("total", total.toString())
-            .addFormDataPart("parts", parts.toString())
-            .addFormDataPart("authHash", auth)
-            .addFormDataPart("maxDownloads", downloads)
-            .build(), onCall) ?: return null
-        val uploadId = init.optString("uploadId").takeIf { Regex("[a-f0-9]{32}").matches(it) } ?: return null
+        val init = call(context, "POST", "$FILES_API/attachments/uploads",
+            jsonBody(JSONObject().put("total", total).put("parts", parts).put("authHash", auth).put("maxDownloads", downloads)),
+            authHeaders(context), onCall) ?: return null
+        val uploadId = init.optString("uploadId").takeIf { FILE_ID.matches(it) } ?: return null
         val sent = java.util.concurrent.atomic.AtomicLongArray(parts)
         val failed = java.util.concurrent.atomic.AtomicBoolean(false)
         val next = java.util.concurrent.atomic.AtomicInteger(0)
@@ -219,7 +221,7 @@ object FileUploader {
             while (!stop()) {
                 val i = next.getAndIncrement()
                 if (i >= parts) break
-                if (!uploadPart(context, enc, phoneHash, uploadId, i, parts, sent, report, onCall, stop)) {
+                if (!uploadPart(context, enc, uploadId, i, parts, sent, report, onCall, stop)) {
                     failed.set(true)
                     break
                 }
@@ -227,27 +229,26 @@ object FileUploader {
         }
         val threads = (1..minOf(PARALLEL_PARTS, parts)).map { Thread(worker, "chunk-upload-$it").apply { start() } }
         threads.forEach { it.join() }
-        if (failed.get() || isCancelled()) { abortChunked(context, phoneHash, uploadId); return null }
-        return postJson(context, form(context, "chunk_finish", phoneHash)
-            .addFormDataPart("uploadId", uploadId)
-            .build(), onCall)?.also { onProgress?.invoke(1f) }
+        if (failed.get() || isCancelled()) { abortChunked(context, uploadId); return null }
+        return call(context, "POST", "$FILES_API/attachments/uploads/$uploadId/finish", jsonBody(JSONObject()),
+            authHeaders(context), onCall)?.optString("fileId")?.also { onProgress?.invoke(1f) }
             ?: run {
                 Log.w(TAG, "Składanie pliku z $parts części nie przeszło")
-                abortChunked(context, phoneHash, uploadId)
+                abortChunked(context, uploadId)
                 null
             }
     }
 
-    private fun abortChunked(context: Context, phoneHash: String, uploadId: String) {
+    private fun abortChunked(context: Context, uploadId: String) {
         val app = context.applicationContext
         AppExecutor.io {
             try {
-                postJson(app, form(app, "chunk_abort", phoneHash).addFormDataPart("uploadId", uploadId).build(), null)
+                call(app, "DELETE", "$FILES_API/attachments/uploads/$uploadId", ByteArray(0).toRequestBody(null), authHeaders(app))
             } catch (_: Exception) {}
         }
     }
 
-    private fun uploadPart(context: Context, enc: File, phoneHash: String, uploadId: String, i: Int, parts: Int,
+    private fun uploadPart(context: Context, enc: File, uploadId: String, i: Int, parts: Int,
                            sent: java.util.concurrent.atomic.AtomicLongArray, report: () -> Unit,
                            onCall: ((okhttp3.Call) -> Unit)?, stop: () -> Boolean): Boolean {
         val offset = i * CHUNK
@@ -256,15 +257,11 @@ object FileUploader {
             if (stop()) return false
             sent.set(i, 0L)
             report()
-            val body = form(context, "chunk", phoneHash, CHUNK_TOKEN_MIN_MS)
-                .addFormDataPart("uploadId", uploadId)
-                .addFormDataPart("index", i.toString())
-                .addFormDataPart("file", "part.bin", fileBody(enc, offset, len, stop) { s ->
-                    sent.set(i, s)
-                    report()
-                })
-                .build()
-            if (postJson(context, body, onCall) != null) {
+            val body = fileBody(enc, offset, len, stop) { s ->
+                sent.set(i, s)
+                report()
+            }
+            if (call(context, "PUT", "$FILES_API/attachments/uploads/$uploadId/$i", body, authHeaders(context), onCall) != null) {
                 sent.set(i, len)
                 report()
                 return true
@@ -286,15 +283,12 @@ object FileUploader {
         return try {
             val kiv = Base64.decode(fileKey, Base64.NO_WRAP)
             if (kiv.size != 44) return false
-            val phoneHash = SetupActivity.getUserPhoneHash(context)
-            val token = fetchUploadToken(context)
-            if (token == null) { Log.e(TAG, "DOWNLOAD: brak tokena uploadu"); return false }
-            val hdrs = mapOf("X-File-Id" to fileId, "X-Upload-Token" to token,
-                "X-Account" to phoneHash, "X-File-Auth" to downloadAuth(fileKey))
+            if (!FILE_ID.matches(fileId)) return false
+            val hdrs = authHeaders(context, mapOf("X-File-Auth" to downloadAuth(fileKey), "X-Download-Ack" to "1"))
             var fetched: Int? = null
             for (attempt in 1..3) {
                 if (attempt > 1) Thread.sleep(2000L * (attempt - 1))
-                fetched = pl.sinusoide.sinuschat.network.ApiClient.getRangedToFile(context, "$BASE_URL?action=download&ack=1", hdrs, enc) { done, total ->
+                fetched = pl.sinusoide.sinuschat.network.ApiClient.getRangedToFile(context, "$FILES_API/attachments/$fileId", hdrs, enc) { done, total ->
                     if (total > 0) onProgress?.invoke((done.toFloat() / total).coerceAtMost(1f) * 0.97f)
                     onBytes?.invoke(done, total)
                 }
@@ -325,7 +319,7 @@ object FileUploader {
                 result.copyTo(target, overwrite = true)
                 result.delete()
             }
-            ackDownload(context, fileId, fileKey, phoneHash)
+            ackDownload(context, fileId, fileKey)
             onProgress?.invoke(1f)
             true
         } catch (e: Exception) {
@@ -380,9 +374,6 @@ object FileUploader {
         }
     }
 
-    private fun stripExifMetadata(imageBytes: ByteArray): ByteArray? =
-        ImagePrep.forSending(imageBytes)
-
     fun uploadVoiceBlocking(context: Context, file: java.io.File, maxDownloads: Int = VOICE_DOWNLOADS): Pair<String, String>? {
         if (file.length() <= 0L || file.length() > MAX_CONTENT) {
             Log.e(TAG, "Głosówka poza limitem: ${file.length() / 1024}KB")
@@ -436,14 +427,9 @@ object FileUploader {
         val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
         when {
             bytes == null -> null
-            key != null -> pl.sinusoide.sinuschat.crypto.ProfileCrypto.sealAvatar(context, bytes, key)
-                ?.let { doUpload(context, it, "group.bin", "group_avatar_enc", "application/octet-stream") }
-                ?.optStringOrNull("url")
-            else -> {
-                val sanitized = stripExifMetadata(bytes) ?: bytes
-                val mimeType = context.contentResolver.getType(uri) ?: "image/jpeg"
-                doUpload(context, sanitized, "group.jpg", "group_avatar", mimeType)?.optStringOrNull("url")
-            }
+            key == null -> { Log.e(TAG, "Zdjęcie grupy bez klucza grupy"); null }
+            else -> pl.sinusoide.sinuschat.crypto.ProfileCrypto.sealAvatar(context, bytes, key)
+                ?.let { uploadSealed(context, "POST", "group-avatars", it) }
         }
     } catch (e: Exception) { Log.e(TAG, "Group avatar fail", e); null }
 
@@ -466,8 +452,7 @@ object FileUploader {
             if (bytes == null) { Log.e(TAG, "Cannot read avatar file"); return null }
 
             val sealed = pl.sinusoide.sinuschat.crypto.ProfileCrypto.sealAvatar(context, bytes) ?: return null
-            val json = doUpload(context, sealed, "avatar.bin", "avatar_enc", "application/octet-stream", phoneHash) ?: return null
-            json.optStringOrNull("url")
+            uploadSealed(context, "PUT", "avatar", sealed)
         } catch (e: Exception) { Log.e(TAG, "Avatar fail", e); null }
     }
 
@@ -478,36 +463,23 @@ object FileUploader {
         }.start()
     }
 
-    @Volatile private var cachedUploadToken: String? = null
-    @Volatile private var cachedTokenExpiry: Long = 0L
-
-    private fun fetchUploadToken(context: Context, minValidMs: Long = 30_000L): String? {
-        val now = System.currentTimeMillis()
-        cachedUploadToken?.let { if (cachedTokenExpiry - now > minValidMs) return it }
-        return try {
-            val obj = pl.sinusoide.sinuschat.network.ApiClient.getObject("/api/upload-token", context)
-            if (obj == null) { Log.e(TAG, "TOKEN: /api/upload-token zwróciło null (brak sieci/autoryzacji?)"); return null }
-            val token = obj.optString("token").takeIf { it.isNotEmpty() }
-            val expiry = obj.optLong("expires_at", 0L)
-            if (token != null) { cachedUploadToken = token; cachedTokenExpiry = expiry }
-            else Log.e(TAG, "TOKEN: odpowiedź bez pola 'token': $obj")
-            token
-        } catch (e: Exception) { Log.e(TAG, "TOKEN: wyjątek: ${e.message}", e); null }
+    private fun uploadSealed(context: Context, method: String, path: String, sealed: ByteArray): String? {
+        lastRefusal.remove()
+        return call(context, method, "$FILES_API/$path", sealed.toRequestBody("application/octet-stream".toMediaType()),
+            authHeaders(context))?.optStringOrNull("url")
     }
 
     private fun downloadAuth(fileKey: String): String =
         pl.sinusoide.sinuschat.crypto.E2EManager.sha256("dl:$fileKey")
 
-    private fun ackDownload(context: Context, fileId: String, fileKey: String, phoneHash: String) {
+    private fun ackDownload(context: Context, fileId: String, fileKey: String) {
         for (attempt in 1..3) {
-            val token = fetchUploadToken(context) ?: return
-            val hdrs = mapOf("X-File-Id" to fileId, "X-Upload-Token" to token,
-                "X-Account" to phoneHash, "X-File-Auth" to downloadAuth(fileKey))
-            val code = pl.sinusoide.sinuschat.network.ApiClient.postBody(context, "$BASE_URL?action=ack",
-                ByteArray(0).toRequestBody(null), hdrs)?.first
-            if (code != null && code in 200..299) return
-            if (code == 403 || code == 400) { cachedUploadToken = null; if (attempt > 1) return }
-            Log.w(TAG, "ACK: próba $attempt nieudana (HTTP $code)")
+            val ok = try {
+                call(context, "POST", "$FILES_API/attachments/$fileId/ack", jsonBody(JSONObject()),
+                    authHeaders(context, mapOf("X-File-Auth" to downloadAuth(fileKey)))) != null
+            } catch (_: Exception) { false }
+            if (ok) return
+            Log.w(TAG, "ACK: próba $attempt nieudana")
         }
     }
 
@@ -525,93 +497,6 @@ object FileUploader {
             null
         } finally {
             tmp.delete()
-        }
-    }
-
-    private fun doUpload(context: Context, data: ByteArray, fileName: String, type: String, contentType: String = "application/octet-stream",
-                         authHash: String? = null, maxDownloads: Int = 1,
-                         onProgress: ((Float) -> Unit)? = null, onCall: ((okhttp3.Call) -> Unit)? = null): JSONObject? {
-        val phoneHash = SetupActivity.getUserPhoneHash(context)
-        return doUpload(context, data, fileName, type, contentType, phoneHash, authHash, maxDownloads, onProgress, onCall)
-    }
-
-    private fun doUpload(context: Context, data: ByteArray, fileName: String, type: String, contentType: String = "application/octet-stream", phoneHash: String,
-                         authHash: String? = null, maxDownloads: Int = 1,
-                         onProgress: ((Float) -> Unit)? = null, onCall: ((okhttp3.Call) -> Unit)? = null): JSONObject? {
-        return try {
-            val token = fetchUploadToken(context) ?: return null
-            val boundary = "----SinusChat${System.currentTimeMillis()}"
-
-            Log.d(TAG, "Upload: type=$type, size=${data.size}")
-
-            val baos = ByteArrayOutputStream()
-            val out = DataOutputStream(baos)
-
-            out.writeBytes("--$boundary\r\n")
-            out.writeBytes("Content-Disposition: form-data; name=\"action\"\r\n\r\n")
-            out.writeBytes("upload\r\n")
-
-            out.writeBytes("--$boundary\r\n")
-            out.writeBytes("Content-Disposition: form-data; name=\"type\"\r\n\r\n")
-            out.writeBytes("$type\r\n")
-
-            out.writeBytes("--$boundary\r\n")
-            out.writeBytes("Content-Disposition: form-data; name=\"token\"\r\n\r\n")
-            out.writeBytes("$token\r\n")
-
-            out.writeBytes("--$boundary\r\n")
-            out.writeBytes("Content-Disposition: form-data; name=\"phoneHash\"\r\n\r\n")
-            out.writeBytes("$phoneHash\r\n")
-
-            if (authHash != null) {
-                out.writeBytes("--$boundary\r\n")
-                out.writeBytes("Content-Disposition: form-data; name=\"authHash\"\r\n\r\n")
-                out.writeBytes("$authHash\r\n")
-            }
-
-            out.writeBytes("--$boundary\r\n")
-            out.writeBytes("Content-Disposition: form-data; name=\"maxDownloads\"\r\n\r\n")
-            out.writeBytes("${maxDownloads.coerceIn(1, 500)}\r\n")
-
-            out.writeBytes("--$boundary\r\n")
-            out.writeBytes("Content-Disposition: form-data; name=\"file\"; filename=\"$fileName\"\r\n")
-            out.writeBytes("Content-Type: $contentType\r\n\r\n")
-            out.write(data)
-            out.writeBytes("\r\n")
-
-            out.writeBytes("--$boundary--\r\n")
-            out.flush()
-
-            val requestBytes = baos.toByteArray()
-            val ctype = "multipart/form-data; boundary=$boundary"
-            val hdrs = mapOf("Accept" to "application/json", "User-Agent" to "SinusChat/5.0")
-            val (code, respBytes) = (if (onProgress != null)
-                pl.sinusoide.sinuschat.network.ApiClient.rawPostProgress(context, BASE_URL, requestBytes, ctype, hdrs,
-                    onProgress, onCall ?: {})
-            else pl.sinusoide.sinuschat.network.ApiClient.rawPost(context, BASE_URL, requestBytes, ctype, hdrs)) ?: return null
-            NetworkSettings.recordSent(context, requestBytes.size.toLong())
-            Log.d(TAG, "Response code: $code")
-            val resp = respBytes.toString(Charsets.UTF_8)
-
-            Log.d(TAG, "Response body (first 500): ${resp.take(500)}")
-
-            if (resp.trimStart().startsWith("{")) {
-                val json = JSONObject(resp)
-                if (json.optBoolean("success", false)) {
-                    Log.d(TAG, "Upload SUCCESS: $type")
-                    json
-                } else {
-                    Log.e(TAG, "Upload failed: ${json.optString("error", "unknown")}")
-                    null
-                }
-            } else {
-                Log.e(TAG, "Server returned non-JSON: ${resp.take(200)}")
-                null
-            }
-
-        } catch (e: Exception) {
-            Log.e(TAG, "doUpload exception", e)
-            null
         }
     }
 }

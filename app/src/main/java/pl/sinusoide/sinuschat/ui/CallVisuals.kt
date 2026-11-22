@@ -93,7 +93,7 @@ class PulseAvatarView(context: Context, private val palette: LockPalette) : Fram
             floatArrayOf(0.55f, 1f), Shader.TileMode.CLAMP)
         canvas.drawCircle(cx, cy, glowR, glowPaint)
         super.onDraw(canvas)
-        if (visibleNow) postInvalidateDelayed(33)
+        if (visibleNow && !A11y.reducedMotion(context)) postInvalidateDelayed(33)
     }
 
     override fun dispatchDraw(canvas: Canvas) {
@@ -250,6 +250,14 @@ class ArcAnswerView(
 
     private val maxDeg = 105f
     private val trigger = 0.9f
+
+    init {
+        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+        isFocusable = true
+        contentDescription = context.getString(pl.sinusoide.sinuschat.R.string.a11y_incoming_arc)
+        androidx.core.view.ViewCompat.addAccessibilityAction(this, context.getString(pl.sinusoide.sinuschat.R.string.answer)) { _, _ -> onAnswer(); true }
+        androidx.core.view.ViewCompat.addAccessibilityAction(this, context.getString(pl.sinusoide.sinuschat.R.string.decline)) { _, _ -> onDecline(); true }
+    }
 
     private val channel = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND }
     private val channelRim = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 1f * d }

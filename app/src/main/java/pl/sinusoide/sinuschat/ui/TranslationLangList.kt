@@ -126,9 +126,11 @@ class TranslationLangList(
                 this.color = cAccent
                 disc = 0
                 showCancel = false
-                isClickable = false
+                stopColor = cRed
+                isClickable = true
                 progress = { Translations.progress(lang) ?: 1f }
-                contentDescription = name
+                contentDescription = activity.getString(R.string.download_stop_desc, name)
+                setOnClickListener { confirmStop(lang, name) }
             }, LinearLayout.LayoutParams((36 * dp).toInt(), (36 * dp).toInt()).apply { marginEnd = (4 * dp).toInt() })
             ready -> row.addView(actionPill(R.drawable.ic_delete, activity.getString(R.string.translate_delete), cRed, filled = false) {
                 confirmDelete(lang, name)
@@ -187,9 +189,22 @@ class TranslationLangList(
         Translations.download(activity, lang) { ok ->
             if (activity.isFinishing || activity.isDestroyed) return@download
             if (ok) PopupHelper.showSuccess(activity, activity.getString(R.string.translate_downloaded, name))
+            else if (Translations.wasCancelled(lang)) PopupHelper.show(activity, activity.getString(R.string.download_stopped, name))
             else PopupHelper.showError(activity, activity.getString(R.string.translate_failed))
+            refresh()
         }
         refresh()
+    }
+
+    private fun confirmStop(lang: String, name: String) {
+        ConfirmSheet.show(activity,
+            icon = R.drawable.ic_stop,
+            color = cRed,
+            title = activity.getString(R.string.download_stop_title),
+            message = activity.getString(R.string.download_stop_msg, name),
+            confirm = activity.getString(R.string.download_stop),
+            dismiss = activity.getString(R.string.download_keep),
+            onConfirm = { Translations.cancel(lang); refresh() })
     }
 
     private fun confirmDelete(lang: String, name: String) {

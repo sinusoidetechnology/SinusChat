@@ -124,7 +124,7 @@ class SlideNavBar @JvmOverloads constructor(
             setPadding(p, (4 * density).toInt(), p, (3 * density).toInt())
         } else {
             colorActive = pl.sinusoide.sinuschat.ui.ThemeUi.attrOrNull(context, androidx.appcompat.R.attr.colorPrimary) ?: Color.parseColor("#5288C1")
-            colorInactive = pl.sinusoide.sinuschat.ui.ThemeUi.attrOrNull(context, R.attr.sinuschat_text_muted) ?: Color.parseColor("#5E6D7E")
+            colorInactive = pl.sinusoide.sinuschat.ui.ThemeUi.attrOrNull(context, R.attr.sinuschat_text_muted) ?: Color.parseColor("#7A8B9E")
             setPadding((6 * density).toInt(), (7 * density).toInt(), (6 * density).toInt(), (7 * density).toInt())
             pillPaint.color = (colorActive and 0x00FFFFFF) or 0x2A000000
             linePaint.color = pl.sinusoide.sinuschat.ui.ThemeUi.attrOrNull(context, R.attr.sinuschat_border) ?: 0x1FFFFFFF

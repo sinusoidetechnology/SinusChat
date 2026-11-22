@@ -27,6 +27,7 @@ object SealedSender {
     private val JSON_TYPE = "application/json; charset=utf-8".toMediaType()
     private val INFO_L1 = "SinusChat sealed v1 L1".toByteArray()
     private val INFO_L2 = "SinusChat sealed v1 L2".toByteArray()
+    private val URGENT_KINDS = setOf("msg", "group_attach")
 
     private fun b64(b: ByteArray) = Base64.encodeToString(b, Base64.NO_WRAP)
 
@@ -142,6 +143,7 @@ object SealedSender {
             .put("payloadB64", b64(env))
             .put("ik", sha(Base64.decode(theirId, Base64.NO_WRAP), 16))
         if (ephemeral) req.put("eph", true)
+        else if (body.optString("kind", "msg") !in URGENT_KINDS) req.put("urgent", false)
         val call = Request.Builder()
             .url("${ApiClient.BASE_URL}/api/sealed")
             .post(req.toString().toRequestBody(JSON_TYPE))

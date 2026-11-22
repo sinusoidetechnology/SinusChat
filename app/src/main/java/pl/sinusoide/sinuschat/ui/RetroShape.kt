@@ -23,7 +23,7 @@ import pl.sinusoide.sinuschat.util.ThemeManager
 
 object RetroShape {
 
-    private const val RADIUS_DP = 2f
+    private const val RADIUS_DP = 4f
 
     fun install(activity: Activity) {
         if (!ThemeManager.isRetro(activity)) return

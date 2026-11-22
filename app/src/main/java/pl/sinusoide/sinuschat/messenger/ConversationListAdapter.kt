@@ -133,7 +133,7 @@ class ConversationListAdapter(
         }
         cPrimary = attr(R.attr.sinuschat_text_primary, Color.WHITE)
         cSecondary = attr(R.attr.sinuschat_text_secondary, Color.parseColor("#7F91A4"))
-        cMuted = attr(R.attr.sinuschat_text_muted, Color.parseColor("#5E6D7E"))
+        cMuted = attr(R.attr.sinuschat_text_muted, Color.parseColor("#7A8B9E"))
         cBackground = attr(R.attr.sinuschat_background_solid, Color.parseColor("#0E1621"))
         cAccent = pl.sinusoide.sinuschat.ui.ThemeUi.accent(ctx)
         colorsResolved = true

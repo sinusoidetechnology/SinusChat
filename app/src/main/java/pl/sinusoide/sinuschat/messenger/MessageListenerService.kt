@@ -154,7 +154,7 @@ class MessageListenerService : Service() {
         }
     }
 
-    private var myPhoneHash = ""
+    private val myPhoneHash: String get() = SetupActivity.getUserPhoneHash(this)
     private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private val lastNotifTime = mutableMapOf<String, Long>()
     private val notifiedIds = object : LinkedHashMap<String, Boolean>(64, 0.75f, false) {
@@ -373,7 +373,6 @@ class MessageListenerService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        myPhoneHash = SetupActivity.getUserPhoneHash(this)
         lastStartId = startId
 
         if (intent?.getBooleanExtra(EXTRA_NO_FG, false) != true) goForeground()
@@ -552,7 +551,7 @@ class MessageListenerService : Service() {
     private fun notifyWithoutDb(json: JSONObject) {
         try {
             val kind       = json.optString("kind", "msg")
-            val convId     = json.optString("conversationId", "")
+            val convId     = pl.sinusoide.sinuschat.util.AccountMove.currentConvId(this, json.optString("conversationId", ""), myPhoneHash)
             val msgId      = json.optString("id", json.optString("messageId", ""))
             val createdAt  = json.optLong("createdAt", System.currentTimeMillis())
             val payloadB64 = json.optString("payloadB64", "")
@@ -795,7 +794,7 @@ class MessageListenerService : Service() {
 
         val isAck = json.optString("type") == "ack" || json.optString("kind") == "ack"
         if (isAck) {
-            val convId      = json.optString("conversationId")
+            val convId      = pl.sinusoide.sinuschat.util.AccountMove.currentConvId(this, json.optString("conversationId"), myPhoneHash)
             val queued = json.optString("payloadB64").takeIf { it.isNotEmpty() }?.let {
                 runCatching { JSONObject(String(Base64.decode(it, Base64.NO_WRAP), Charsets.UTF_8)) }.getOrNull()
             }
@@ -817,7 +816,8 @@ class MessageListenerService : Service() {
 
         val kind        = json.optString("kind", "msg")
         val senderHash  = json.optString("senderHash", "")
-        val convId      = json.optString("conversationId", "")
+        val rawConvId   = json.optString("conversationId", "")
+        val convId      = pl.sinusoide.sinuschat.util.AccountMove.currentConvId(this, rawConvId, myPhoneHash)
         val payloadB64  = json.optString("payloadB64", "")
         val msgId       = json.optString("id", json.optString("messageId", ""))
         val createdAt   = json.optLong("createdAt", System.currentTimeMillis())
@@ -840,6 +840,9 @@ class MessageListenerService : Service() {
             Log.w(TAG, "Odrzucono ramkę „$kind\" — nadawca się nie zgadza")
             pl.sinusoide.sinuschat.util.LinkLog.add(this, "drop", "$kind nadawca ${msgId.take(10)}")
             return
+        }
+        if (rawConvId != convId && sender != myPhoneHash) {
+            AppExecutor.io { pl.sinusoide.sinuschat.util.AccountMove.reannounceTo(this, sender) }
         }
 
         if (kind == "resend_req") {
@@ -917,14 +920,15 @@ class MessageListenerService : Service() {
                 val metaJson = openGroupContent(convId, msgId, senderHash, payload, "encAttach", ts) ?: return
                 try {
                     val meta = JSONObject(metaJson)
+                    val voice = GroupRepository.voiceSeconds(meta)
                     val entity = MessageEntity(
                         id = msgId, conversationId = convId, senderHash = senderHash,
-                        text = meta.optString("caption"), timestampMs = ts,
+                        text = if (voice != null) "" else meta.optString("caption"), timestampMs = ts,
                         status = MessageEntity.STATUS_DELIVERED,
-                        type = MessageEntity.TYPE_ATTACHMENT,
+                        type = if (voice != null) MessageEntity.TYPE_VOICE else MessageEntity.TYPE_ATTACHMENT,
                         fileId = meta.optString("fileId"),
                         fileKey = meta.optString("fileKey"),
-                        attachmentName = meta.optString("fileName"),
+                        attachmentName = if (voice != null) "${voice}s" else meta.optString("fileName"),
                         albumId = meta.optString("albumId").takeIf { it.isNotEmpty() },
                         replyToId = meta.optString("replyToId").takeIf { it.isNotEmpty() },
                         replyToText = meta.optString("replyToText").takeIf { it.isNotEmpty() }
@@ -958,17 +962,18 @@ class MessageListenerService : Service() {
                             val entity = try {
                                 val j = JSONObject(text)
                                 if (j.has("fileId")) {
-                                    pl.sinusoide.sinuschat.util.VideoThumbs.saveFromPayload(
+                                    val voice = GroupRepository.voiceSeconds(j)
+                                    if (voice == null) pl.sinusoide.sinuschat.util.VideoThumbs.saveFromPayload(
                                         this, convId, pendingMsgId, j.optString("fileName"), j)
                                     MessageEntity(
                                         id = pendingMsgId, conversationId = convId,
                                         senderHash = senderHash, text = "",
                                         timestampMs = item.timestamp,
                                         status = MessageEntity.STATUS_DELIVERED,
-                                        type = MessageEntity.TYPE_ATTACHMENT,
+                                        type = if (voice != null) MessageEntity.TYPE_VOICE else MessageEntity.TYPE_ATTACHMENT,
                                         fileId = j.optString("fileId"),
                                         fileKey = j.optString("fileKey"),
-                                        attachmentName = j.optString("fileName"),
+                                        attachmentName = if (voice != null) "${voice}s" else j.optString("fileName"),
                                         albumId = j.optString("albumId").takeIf { it.isNotEmpty() }
                                     )
                                 } else throw Exception(getString(R.string.not_attachment))
@@ -1014,6 +1019,20 @@ class MessageListenerService : Service() {
                 if (!GroupRepository.isGroup(convId)) pl.sinusoide.sinuschat.crypto.ProfileCrypto.onKeyRequest(this, senderHash)
                 return
             }
+            GroupRepository.KIND_REACT -> {
+                if (!GroupRepository.isGroup(convId)) return
+                val emoji = GroupRepository.openPatch(this, convId, myPhoneHash, senderHash, payload) ?: return
+                val target = GroupRepository.incomingTarget(this, convId, payload.optString("targetMessageId"), senderHash, myPhoneHash) ?: return
+                val clean = emoji.trim().takeIf { it.length <= 16 && it.none { c -> c.isWhitespace() } }?.ifEmpty { null }
+                MessageRepository.applyReactionPatchBlocking(this, convId, target, senderHash, clean)
+            }
+            GroupRepository.KIND_EDIT -> {
+                if (!GroupRepository.isGroup(convId)) return
+                val text = GroupRepository.openPatch(this, convId, myPhoneHash, senderHash, payload)?.trim() ?: return
+                if (text.isEmpty()) return
+                val target = GroupRepository.incomingTarget(this, convId, payload.optString("targetMessageId"), senderHash, myPhoneHash) ?: return
+                MessageRepository.applyEditPatchBlocking(this, convId, senderHash, target, text.take(8_000))
+            }
             "reaction" -> {
                 val targetId = payload.optString("targetMessageId")
                 if (targetId.isEmpty()) return
@@ -1032,13 +1051,17 @@ class MessageListenerService : Service() {
                 }
             }
             "pin" -> {
-                val targetId = payload.optString("targetMessageId")
-                if (targetId.isEmpty()) return
+                val raw = payload.optString("targetMessageId")
+                if (raw.isEmpty()) return
+                val targetId = if (GroupRepository.isGroup(convId))
+                    GroupRepository.incomingTarget(this, convId, raw, senderHash, myPhoneHash) ?: return else raw
                 MessageRepository.applyPinPatchBlocking(this, convId, targetId, payload.optBoolean("pinned", false))
             }
             "delete" -> {
-                val targetId = payload.optString("targetMessageId")
-                if (targetId.isEmpty()) return
+                val raw = payload.optString("targetMessageId")
+                if (raw.isEmpty()) return
+                val targetId = if (GroupRepository.isGroup(convId))
+                    GroupRepository.incomingTarget(this, convId, raw, senderHash, myPhoneHash) ?: return else raw
                 MessageRepository.applyDeletePatchBlocking(this, convId, senderHash, targetId)
             }
             pl.sinusoide.sinuschat.util.GroupReceipts.KIND -> {
@@ -1607,6 +1630,7 @@ class MessageListenerService : Service() {
     }
 
     private fun maybeNotify(convId: String, senderHash: String, entity: MessageEntity) {
+        sendBroadcast(Intent("pl.sinusoide.sinuschat.REFRESH_CONVERSATIONS").setPackage(packageName))
         autoFetchMedia(entity)
         if (entity.id.isNotEmpty() && pl.sinusoide.sinuschat.util.LockedInbox.consumeNotified(this, entity.id)) return
         if (currentlyOpenConversationId == convId) return

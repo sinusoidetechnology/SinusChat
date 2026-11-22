@@ -53,10 +53,10 @@ class LockPalette private constructor(
             if (pl.sinusoide.sinuschat.util.ThemeManager.isRetro(ctx)) return LockPalette(
                 flow = false, dark = false,
                 background = RetroUi.PANEL,
-                fill = Color.WHITE, fillPressed = 0xFFC4D5EE.toInt(),
-                rimTop = RetroUi.FRAME, rimBottom = RetroUi.FRAME,
-                text = RetroUi.NAVY, textSecondary = 0xFF3D5E8C.toInt(),
-                accent = RetroUi.TITLE_MID, accent2 = RetroUi.TITLE_MID, onAccent = Color.WHITE,
+                fill = Color.WHITE, fillPressed = 0xFFC4E5F6.toInt(),
+                rimTop = RetroUi.FIELD, rimBottom = RetroUi.FIELD,
+                text = RetroUi.NAVY, textSecondary = 0xFF46607F.toInt(),
+                accent = RetroUi.ACCENT, accent2 = RetroUi.ACCENT, onAccent = Color.WHITE,
                 sparkCore = Color.BLACK, retro = true
             )
             val dark = isDark(ctx)
@@ -165,7 +165,7 @@ class AuroraBackgroundView(context: Context, private val palette: LockPalette) :
             blobPaints[i].shader?.setLocalMatrix(matrices[i])
             canvas.drawRect(0f, 0f, w, h, blobPaints[i])
         }
-        if (running) postInvalidateDelayed(33)
+        if (running && !A11y.reducedMotion(context)) postInvalidateDelayed(33)
     }
 }
 
@@ -245,7 +245,7 @@ class LockRingView(context: Context, private val palette: LockPalette) : FrameLa
         }
         canvas.drawArc(rect, angle, sweep, false, arc)
         super.onDraw(canvas)
-        if (running) postInvalidateDelayed(33)
+        if (running && !A11y.reducedMotion(context)) postInvalidateDelayed(33)
     }
 }
 
@@ -295,7 +295,22 @@ class PinFieldView(
     private var stateMix = 0f
     private var lastX = -1f
 
+    private var entered = 0
+
+    init {
+        accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
+        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+        describe()
+    }
+
+    private fun describe() {
+        contentDescription = if (entered == 0) context.getString(pl.sinusoide.sinuschat.R.string.a11y_pin_empty)
+            else resources.getQuantityString(pl.sinusoide.sinuschat.R.plurals.a11y_pin_entered, entered, entered)
+    }
+
     fun onDigit() {
+        entered++
+        describe()
         if (showDots) {
             dotBorn.add(System.nanoTime())
             removedIndex = -1
@@ -318,6 +333,8 @@ class PinFieldView(
     }
 
     fun onDelete(nowEmpty: Boolean) {
+        entered = if (nowEmpty) 0 else (entered - 1).coerceAtLeast(0)
+        describe()
         if (showDots) {
             if (dotBorn.isNotEmpty()) {
                 removedIndex = dotBorn.size - 1
@@ -335,6 +352,8 @@ class PinFieldView(
     }
 
     fun clear() {
+        entered = 0
+        describe()
         if (showDots && dotBorn.isNotEmpty()) {
             dotBorn.clear()
             removedIndex = -1
@@ -418,11 +437,11 @@ class PinFieldView(
         rect.set(sw / 2f, sw / 2f, w - sw / 2f, h - sw / 2f)
         fill.shader = null
         fill.color = Color.WHITE
-        canvas.drawRect(rect, fill)
+        canvas.drawRoundRect(rect, 2 * d, 2 * d, fill)
         rim.shader = null
-        rim.color = if (stateMix > 0f) blend(palette.rimTop, stateColor, stateMix) else if (isSelected) RetroUi.TITLE_MID else palette.rimTop
+        rim.color = if (stateMix > 0f) blend(palette.rimTop, stateColor, stateMix) else if (isSelected) RetroUi.FOCUS else palette.rimTop
         rim.strokeWidth = sw
-        canvas.drawRect(rect, rim)
+        canvas.drawRoundRect(rect, 2 * d, 2 * d, rim)
         if (!showDots) {
             if (hasInput) {
                 dotPaint.color = Color.BLACK
@@ -567,15 +586,7 @@ class GlassKeyView(
         val cx = width / 2f; val cy = height / 2f
         val sw = d.coerceAtLeast(1f)
         box.set(sw / 2f, sw / 2f, width - sw / 2f, height - sw / 2f)
-        fill.shader = LinearGradient(0f, 0f, 0f, height.toFloat(),
-            if (press > 0f) intArrayOf(0xFFA9C2E6.toInt(), 0xFFC4D5EE.toInt(), 0xFFD9E4F4.toInt())
-            else intArrayOf(Color.WHITE, 0xFFECF1F9.toInt(), 0xFFD5E0F0.toInt()),
-            null, Shader.TileMode.CLAMP)
-        canvas.drawRoundRect(box, 3 * d, 3 * d, fill)
-        rim.shader = null
-        rim.strokeWidth = sw
-        rim.color = if (press > 0f) RetroUi.TITLE_LINE else RetroUi.FRAME
-        canvas.drawRoundRect(box, 3 * d, 3 * d, rim)
+        RetroUi.drawButton(canvas, box, press > 0f, d, fill, rim)
         if (digit != null) {
             digitPaint.typeface = Typeface.DEFAULT
             digitPaint.textSize = android.util.TypedValue.applyDimension(android.util.TypedValue.COMPLEX_UNIT_SP, 22f, resources.displayMetrics)
@@ -609,7 +620,7 @@ class GlassKeyView(
                 it.alpha = 255
                 it.draw(canvas)
             }
-            if (visibleNow) postInvalidateDelayed(33)
+            if (visibleNow && !A11y.reducedMotion(context)) postInvalidateDelayed(33)
             return
         }
         if (press > 0.01f && palette.flow) {

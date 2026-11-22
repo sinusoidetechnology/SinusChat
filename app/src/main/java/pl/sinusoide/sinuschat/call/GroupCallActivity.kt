@@ -485,6 +485,7 @@ class GroupCallActivity : AppCompatActivity() {
         }
         statusPill = pill
         tvStatus = TextView(this).apply {
+            accessibilityLiveRegion = android.view.View.ACCESSIBILITY_LIVE_REGION_POLITE
             text = getString(R.string.gcall_connecting)
             textSize = 14f
             setTextColor(if (palette.flow) 0xE6FFFFFF.toInt() else palette.textSecondary)

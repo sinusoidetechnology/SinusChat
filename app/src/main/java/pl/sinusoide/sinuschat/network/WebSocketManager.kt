@@ -334,6 +334,10 @@ object WebSocketManager {
                             pl.sinusoide.sinuschat.util.UserStatusManager.resendAfterServerStart(ctx)
                         }
                         AppExecutor.main { onReconnected?.invoke() }
+                        AppExecutor.io {
+                            ApiClient.refreshTokenIfOld(ctx)
+                            pl.sinusoide.sinuschat.util.AccountMove.retryPending(ctx)
+                        }
                     }
                     "auth_error" -> {
                         Log.e(TAG, "Auth error — token nieważny, kasuję i ponawiam rejestrację")
@@ -363,6 +367,13 @@ object WebSocketManager {
                             AppExecutor.main { onPresenceCallback?.invoke(userHash, heartbeat, lastSeen) }
                         }
                     }
+                    "group_member_moved" -> {
+                        val gId = msg.optString("groupId")
+                        val ctx = appCtx
+                        if (gId.isNotEmpty() && ctx != null) AppExecutor.io {
+                            pl.sinusoide.sinuschat.util.GroupRoster.applyMove(ctx, gId, msg.optString("oldHash"), msg.optString("newHash"))
+                        }
+                    }
                     "group_settings_changed" -> {
                         val gId = msg.optString("groupId")
                         val ctx = appCtx
@@ -373,6 +384,7 @@ object WebSocketManager {
                                 pl.sinusoide.sinuschat.util.GroupSystemMessages.disappearingChanged(ctx, gId, ttl)
                             }
                             if (msg.has("perms") && !msg.isNull("perms")) {
+                                pl.sinusoide.sinuschat.util.GroupNotices.save(ctx, gId, msg.optJSONObject("perms"))
                                 pl.sinusoide.sinuschat.util.GroupSystemMessages.settingsChanged(ctx, gId)
                             }
                             ctx.sendBroadcast(android.content.Intent(

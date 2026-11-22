@@ -88,7 +88,7 @@ object GroupCallRing {
             .setColor(0xFF5288C1.toInt())
             .setContentIntent(fullPi)
         if (silent) builder.setSilent(true) else builder.setFullScreenIntent(fullPi, true)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !silent) {
             builder.setStyle(NotificationCompat.CallStyle.forIncomingCall(
                 Person.Builder().setName(title).setImportant(true).build(), declinePi, joinPi))
         } else {
@@ -96,7 +96,10 @@ object GroupCallRing {
             builder.addAction(R.drawable.ic_call_answer, app.getString(R.string.gcall_join), joinPi)
         }
         try { NotificationManagerCompat.from(app).notify(NOTIF_ID, builder.build()) }
-        catch (e: SecurityException) { Log.w(TAG, "notify: ${e.message}") }
+        catch (e: Exception) {
+            Log.w(TAG, "notify: ${e.message}")
+            pl.sinusoide.sinuschat.util.LinkLog.add(app, "call", "powiadomienie o rozmowie grupowej odrzucone: ${e.javaClass.simpleName}")
+        }
         CallRinger.start(app, state.groupId, silent)
         try {
             if (pl.sinusoide.sinuschat.SinusApp.isForeground && !silent) app.startActivity(full)
@@ -106,6 +109,7 @@ object GroupCallRing {
 
     fun stop(context: Context, groupId: String) {
         ringing.remove(groupId) ?: return
+        pl.sinusoide.sinuschat.pclink.PcLinkGroupCalls.onRingStopped(context, groupId)
         CallRinger.stop(groupId)
         try { NotificationManagerCompat.from(context).cancel(NOTIF_ID) } catch (_: Exception) {}
         context.sendBroadcast(Intent(GroupCallActivity.ACTION_RING_STOPPED).setPackage(context.packageName)

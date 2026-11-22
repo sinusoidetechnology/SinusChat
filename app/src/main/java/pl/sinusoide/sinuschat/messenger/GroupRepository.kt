@@ -36,13 +36,21 @@ data class GroupPerms(
     val editSettings: Boolean = true,
     val sendMessages: Boolean = true,
     val addMembers:   Boolean = true,
-    val callGroup:    Boolean = true
+    val callGroup:    Boolean = true,
+    val noticeJoin:   Boolean = true,
+    val noticeLeave:  Boolean = true,
+    val noticeEmail:  Boolean = true,
+    val noticeKey:    Boolean = true
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("editSettings", editSettings)
         .put("sendMessages", sendMessages)
         .put("addMembers",   addMembers)
         .put("callGroup",    callGroup)
+        .put("noticeJoin",   noticeJoin)
+        .put("noticeLeave",  noticeLeave)
+        .put("noticeEmail",  noticeEmail)
+        .put("noticeKey",    noticeKey)
 
     companion object {
         fun from(o: JSONObject?): GroupPerms {
@@ -51,7 +59,11 @@ data class GroupPerms(
                 editSettings = o.optBoolean("editSettings", true),
                 sendMessages = o.optBoolean("sendMessages", true),
                 addMembers   = o.optBoolean("addMembers",   true),
-                callGroup    = o.optBoolean("callGroup",    true)
+                callGroup    = o.optBoolean("callGroup",    true),
+                noticeJoin   = o.optBoolean("noticeJoin",   true),
+                noticeLeave  = o.optBoolean("noticeLeave",  true),
+                noticeEmail  = o.optBoolean("noticeEmail",  true),
+                noticeKey    = o.optBoolean("noticeKey",    true)
             )
         }
     }
@@ -68,7 +80,12 @@ data class GroupMember(
 object GroupRepository {
 
     const val CAP_GROUP_SEALED = "group_sealed"
-    val SEALED_GROUP_KINDS = setOf("msg", "group_attach")
+    const val KIND_REACT = "group_react"
+    const val KIND_EDIT = "group_edit"
+    val SEALED_GROUP_KINDS = setOf("msg", "group_attach", KIND_REACT, KIND_EDIT)
+    private const val PATCH_SKM = "xskm"
+    private const val PATCH_ENC = "xenc"
+    const val VOICE_FILE = "voice.ogg"
 
     private const val TAG = "GroupRepository"
 
@@ -150,12 +167,21 @@ object GroupRepository {
                         isAdmin     = m.optBoolean("is_admin", false)
                     )
                 }
-                pl.sinusoide.sinuschat.util.GroupRoster.reconcile(context, groupId, members.map { it.userHash })
                 members.forEach { m ->
                     val real = realNames[m.userHash].orEmpty()
                     if (real.isNotEmpty()) {
                         pl.sinusoide.sinuschat.util.ContactCache.saveName(context, m.userHash, real)
                     }
+                }
+                pl.sinusoide.sinuschat.util.GroupNotices.save(context, groupId, permsOf(resp))
+                resp.optJSONArray("moved")?.let { moved ->
+                    for (k in 0 until moved.length()) {
+                        val mv = moved.optJSONObject(k) ?: continue
+                        pl.sinusoide.sinuschat.util.GroupRoster.applyMove(context, groupId, mv.optString("from"), mv.optString("to"))
+                    }
+                }
+                pl.sinusoide.sinuschat.util.GroupRoster.reconcile(context, groupId, members.map { it.userHash })
+                members.forEach { m ->
                     if (m.userHash != myHash) {
                         pl.sinusoide.sinuschat.util.AvatarHelper.setContactColor(context, m.userHash, m.avatarColor)
                     }
@@ -394,6 +420,104 @@ object GroupRepository {
             type = pl.sinusoide.sinuschat.data.MessageEntity.TYPE_ATTACHMENT,
             fileId = fileId, fileKey = fileKeyPlain, attachmentName = fileName))
         return ok
+    }
+
+    fun voiceDownloads(context: Context, groupId: String, myHash: String): Int =
+        pl.sinusoide.sinuschat.util.GroupRoster.members(context, groupId)?.count { it != myHash }?.takeIf { it > 0 }
+            ?.let { (it * 2).coerceAtMost(500) } ?: 50
+
+    fun sendVoiceBlocking(
+        context: Context, groupId: String, myHash: String, fileId: String, fileKey: String,
+        durationSeconds: Int, localFile: java.io.File?, id: String? = null
+    ): Boolean {
+        val msgId = id ?: java.util.UUID.randomUUID().toString()
+        val dao = SinusChatDatabase.getInstance(context).messageDao()
+        val seconds = durationSeconds.coerceAtLeast(1)
+        localFile?.let { runCatching { it.copyTo(MediaManager.voiceCacheFile(context, msgId), overwrite = true) } }
+        dao.insert(pl.sinusoide.sinuschat.data.MessageEntity(
+            id = msgId, conversationId = groupId, senderHash = myHash, text = "", timestampMs = System.currentTimeMillis(),
+            status = pl.sinusoide.sinuschat.data.MessageEntity.STATUS_PENDING,
+            type = pl.sinusoide.sinuschat.data.MessageEntity.TYPE_VOICE,
+            fileId = fileId, fileKey = fileKey, attachmentName = "${seconds}s"))
+        val meta = JSONObject().put("fileId", fileId).put("fileKey", fileKey).put("fileName", VOICE_FILE).put("voice", seconds)
+        val sealed = GroupKeyManager.sealForGroup(context, groupId, meta.toString(), "encAttach")
+        val resp = sealed?.let {
+            postGroupEvent(context, groupId, msgId, "group_attach",
+                merge(JSONObject().put("senderHash", myHash).put("timestamp", System.currentTimeMillis()), it))
+        }
+        val ok = resp != null
+        serverTime(resp)?.let { dao.updateTimestamp(msgId, it) }
+        dao.updateStatus(msgId,
+            if (ok) pl.sinusoide.sinuschat.data.MessageEntity.STATUS_SENT
+            else pl.sinusoide.sinuschat.data.MessageEntity.STATUS_FAILED)
+        return ok
+    }
+
+    fun voiceSeconds(meta: JSONObject): Int? =
+        if (meta.has("voice")) meta.optInt("voice", 0).coerceIn(0, 24 * 3600) else null
+
+    fun canonicalId(localId: String, myHash: String): String = localId.removeSuffix("_" + myHash.take(16))
+
+    fun incomingTarget(context: Context, groupId: String, raw: String, senderHash: String, myHash: String): String? =
+        localTarget(context, groupId, raw.removeSuffix("_" + senderHash.take(16)), myHash)
+
+    fun localTarget(context: Context, groupId: String, canonical: String, myHash: String): String? {
+        if (canonical.isEmpty() || canonical.length > 200) return null
+        val dao = SinusChatDatabase.getInstance(context).messageDao()
+        val sealed = canonical + "_" + myHash.take(16)
+        dao.getById(sealed)?.takeIf { it.conversationId == groupId }?.let { return it.id }
+        return dao.getById(canonical)?.takeIf { it.conversationId == groupId }?.id
+    }
+
+    fun setReaction(context: Context, groupId: String, myHash: String, targetLocalId: String, emoji: String?) {
+        AppExecutor.send {
+            try {
+                MessageRepository.applyReactionPatchBlocking(context, groupId, targetLocalId, myHash, emoji)
+                sendPatchBlocking(context, groupId, myHash, KIND_REACT, canonicalId(targetLocalId, myHash), emoji.orEmpty())
+            } catch (e: Exception) {
+                Log.w(TAG, "reakcja w grupie: ${e.message}")
+            }
+        }
+    }
+
+    fun editMessage(context: Context, groupId: String, myHash: String, targetLocalId: String, newText: String) {
+        AppExecutor.send {
+            try {
+                MessageRepository.applyEditPatchBlocking(context, groupId, myHash, targetLocalId, newText)
+                sendPatchBlocking(context, groupId, myHash, KIND_EDIT, canonicalId(targetLocalId, myHash), newText)
+            } catch (e: Exception) {
+                Log.w(TAG, "edycja w grupie: ${e.message}")
+            }
+        }
+    }
+
+    fun sendPatchBlocking(context: Context, groupId: String, myHash: String, kind: String, target: String, body: String): Boolean {
+        val sealed = GroupKeyManager.sealForGroup(context, groupId, body, PATCH_ENC) ?: return false
+        sealed.optString("skm").takeIf { it.isNotEmpty() }?.let {
+            sealed.remove("skm")
+            sealed.put(PATCH_SKM, it)
+        }
+        val payload = JSONObject().put("senderHash", myHash).put("timestamp", System.currentTimeMillis())
+            .put("targetMessageId", target)
+        return postGroupEvent(context, groupId, java.util.UUID.randomUUID().toString(), kind, merge(payload, sealed)) != null
+    }
+
+    fun openPatch(context: Context, groupId: String, myHash: String, senderHash: String, payload: JSONObject): String? {
+        payload.optString(PATCH_SKM).takeIf { it.isNotEmpty() }?.let { skm ->
+            return when (val r = pl.sinusoide.sinuschat.crypto.SignalProtocol.groupDecrypt(context, senderHash, skm)) {
+                is pl.sinusoide.sinuschat.crypto.SignalProtocol.GroupOpened.Ok -> r.bytes.toString(Charsets.UTF_8)
+                pl.sinusoide.sinuschat.crypto.SignalProtocol.GroupOpened.NoKey -> {
+                    GroupKeyManager.requestKeyFrom(context, groupId, myHash, senderHash, v2 = true)
+                    null
+                }
+                else -> null
+            }
+        }
+        val enc = payload.optString(PATCH_ENC).takeIf { it.isNotEmpty() } ?: return null
+        return GroupKeyManager.decryptFromMember(context, groupId, senderHash, enc) ?: run {
+            GroupKeyManager.requestKeyFrom(context, groupId, myHash, senderHash)
+            null
+        }
     }
 
     fun sendCaptionCompanionBlocking(context: Context, msg: pl.sinusoide.sinuschat.data.MessageEntity) {

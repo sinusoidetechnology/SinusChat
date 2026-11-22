@@ -150,7 +150,7 @@ interface MessageDao {
     fun countIncomingSince(conversationId: String, me: String, since: Long): Int
 
     @Query("UPDATE messages SET conversationId = :newId WHERE conversationId = :oldId")
-    fun renameConversation(oldId: String, newId: String)
+    fun renameConversation(oldId: String, newId: String): Int
 
     @Query("UPDATE messages SET senderHash = :newHash WHERE senderHash = :oldHash")
     fun renameSender(oldHash: String, newHash: String)

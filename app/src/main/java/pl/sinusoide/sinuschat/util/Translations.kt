@@ -190,6 +190,14 @@ object Translations {
     fun isDownloading(lang: String) = downloading.containsKey(lang)
     fun progress(lang: String): Float? = downloading[lang]
 
+    private val cancelled = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
+    fun cancel(lang: String) {
+        if (downloading.containsKey(lang)) cancelled.add(lang)
+    }
+
+    fun wasCancelled(lang: String): Boolean = lang in cancelled
+
     fun downloadBytes(ctx: Context, lang: String): Long =
         partsFor(ctx, lang).filter { !partReady(ctx, it) }.sumOf { it.download }
 
@@ -226,6 +234,7 @@ object Translations {
     fun download(ctx: Context, lang: String, done: (Boolean) -> Unit) {
         if (lang !in LANGS || lang == appLang(ctx)) { done(false); return }
         if (downloading.putIfAbsent(lang, 0f) != null) return
+        cancelled.remove(lang)
         notifyChanged()
         val app = ctx.applicationContext
         val parts = partsFor(app, lang)
@@ -234,20 +243,27 @@ object Translations {
             var doneBytes = 0L
             var ok = true
             var lastPct = -1
+            TranslationNotifier.progress(app, lang, 0f)
             for (part in parts) {
+                if (lang in cancelled) { ok = false; break }
                 if (partReady(app, part)) { doneBytes += part.download; continue }
                 val base = doneBytes
-                val got = fetchPart(app, part) { f ->
+                val got = fetchPart(app, part, { lang in cancelled }) { f ->
                     val v = ((base + part.download * f) / total).coerceIn(0f, 1f)
                     downloading[lang] = v
                     val pct = (v * 100).toInt()
-                    if (pct != lastPct) { lastPct = pct; notifyChanged() }
+                    if (pct != lastPct) {
+                        lastPct = pct
+                        notifyChanged()
+                        TranslationNotifier.progress(app, lang, v)
+                    }
                 }
                 if (!got) { ok = false; break }
                 doneBytes += part.download
                 downloading[lang] = (doneBytes.toFloat() / total).coerceIn(0f, 1f)
                 notifyChanged()
             }
+            TranslationNotifier.done(app, lang)
             readyCache.clear()
             if (ok && filesReady(app, lang)) setSelected(app, selected(app) + lang)
             downloading.remove(lang)
@@ -257,13 +273,13 @@ object Translations {
         }
     }
 
-    private fun fetchPart(ctx: Context, part: TranslationModels.Part, onProgress: (Float) -> Unit): Boolean {
+    private fun fetchPart(ctx: Context, part: TranslationModels.Part, isCancelled: () -> Boolean, onProgress: (Float) -> Unit): Boolean {
         val target = file(ctx, part)
         val raw = File(target.parentFile, part.name + ".part")
         val tmp = File(target.parentFile, part.name + ".tmp")
         try {
             val code = pl.sinusoide.sinuschat.network.ApiClient.getToFile(ctx,
-                TranslationModels.BASE_URL + part.name + ".gz", mapOf("Accept-Encoding" to "identity"), raw, onProgress)
+                TranslationModels.BASE_URL + part.path, mapOf("Accept-Encoding" to "identity"), raw, onProgress, isCancelled)
             if (code != 200) { Log.w(TAG, "Pobieranie ${part.name}: HTTP $code"); return false }
             val gzip = raw.inputStream().use { val b = ByteArray(2); it.read(b) == 2 && b[0] == 0x1f.toByte() && b[1] == 0x8b.toByte() }
             val digest = MessageDigest.getInstance("SHA-256")

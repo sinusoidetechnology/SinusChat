@@ -71,9 +71,9 @@ When the user asks for a program, a web page, a document, a spreadsheet or a pre
             val temperature: Float,
             val topK: Int,
             val topP: Float,
-            val maxTokens: Int
+            val maxTokens: Int,
+            val url: String
         ) {
-            val url: String get() = AppConfig.AI_MODELS_BASE + filename
             val sizeGB: Double   get() = sizeBytes / 1_000_000_000.0
             val minValidBytes: Long get() = (sizeBytes * 0.9).toLong()
         }
@@ -91,7 +91,8 @@ When the user asks for a program, a web page, a document, a spreadsheet or a pre
                 supportsThinking = true,
                 iconResId = R.drawable.ic_sinia,
                 prompt = PROMPT_CHAT,
-                temperature = 1.0f, topK = 64, topP = 0.95f, maxTokens = 4000
+                temperature = 1.0f, topK = 64, topP = 0.95f, maxTokens = 4000,
+                url = "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/2e12bfd869b2962984f97a1f2a26807316d534cc/gemma-4-E2B-it.litertlm"
             ),
             ModelInfo(
                 id = "normal",
@@ -105,7 +106,8 @@ When the user asks for a program, a web page, a document, a spreadsheet or a pre
                 supportsThinking = true,
                 iconResId = R.drawable.ic_lightbulb,
                 prompt = PROMPT_CHAT,
-                temperature = 1.0f, topK = 64, topP = 0.95f, maxTokens = 4000
+                temperature = 1.0f, topK = 64, topP = 0.95f, maxTokens = 4000,
+                url = "https://huggingface.co/litert-community/gemma-4-E4B-it-litert-lm/resolve/f254b5ba6e36f7d89cc7892e268e9877bc20f0a0/gemma-4-E4B-it.litertlm"
             )
         )
         enum class Compat { GREEN, YELLOW, RED }
@@ -461,7 +463,8 @@ When the user asks for a program, a web page, a document, a spreadsheet or a pre
         btnStartDownload.setOnClickListener { onSetupPrimaryClick() }
         btnDownloadMore.setOnClickListener  { showSetup() }
         btnCancelDownload.setOnClickListener{
-            if (downloadService?.isDownloading == true) downloadService?.cancelAll() else showSetup()
+            if (downloadService?.isDownloading == true) confirmStopDownload(getString(R.string.sinia_short)) { downloadService?.cancelAll() }
+            else showSetup()
         }
         btnDeleteModel.setOnClickListener   { showSetup() }
         btnRetryLoad.setOnClickListener     { updateScreenState() }
@@ -647,11 +650,22 @@ When the user asks for a program, a web page, a document, a spreadsheet or a pre
             card.findViewById<ImageButton>(R.id.btn_model_action).apply {
                 val error = androidx.core.content.ContextCompat.getColor(ctx, R.color.sinuschat_error)
                 when {
-                    downloading || queued -> {
+                    downloading -> {
+                        setImageResource(R.drawable.ic_stop)
+                        imageTintList = android.content.res.ColorStateList.valueOf(error)
+                        contentDescription = getString(R.string.download_stop_desc, getString(model.nameResId))
+                        setOnClickListener {
+                            confirmStopDownload(getString(model.nameResId)) {
+                                downloadService?.cancelCurrent()
+                                buildModelCards(); refreshDownloadScreen()
+                            }
+                        }
+                    }
+                    queued -> {
                         setImageResource(R.drawable.ic_close)
                         imageTintList = android.content.res.ColorStateList.valueOf(error)
                         setOnClickListener {
-                            if (downloading) downloadService?.cancelCurrent() else downloadService?.dequeue(model.filename)
+                            downloadService?.dequeue(model.filename)
                             buildModelCards(); refreshDownloadScreen()
                         }
                     }
@@ -1698,5 +1712,18 @@ When the user asks for a program, a web page, a document, a spreadsheet or a pre
         r = r.replace(Regex(""" {2,}"""), " ")
         r = r.replace(Regex("""^\s*Thinking Process:\s*""", RegexOption.IGNORE_CASE), "")
         return r
+    }
+
+    private fun confirmStopDownload(name: String, onStop: () -> Unit) {
+        val act = activity ?: return
+        val red = androidx.core.content.ContextCompat.getColor(act, R.color.sinuschat_error)
+        pl.sinusoide.sinuschat.ui.ConfirmSheet.show(act,
+            icon = R.drawable.ic_stop,
+            color = red,
+            title = getString(R.string.download_stop_title),
+            message = getString(R.string.download_stop_msg, name),
+            confirm = getString(R.string.download_stop),
+            dismiss = getString(R.string.download_keep),
+            onConfirm = onStop)
     }
 }
