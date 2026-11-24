@@ -26,7 +26,8 @@ object ConfirmSheet {
         confirmIcon: Int = icon,
         onConfirm: () -> Unit,
         onCancel: () -> Unit = {},
-        dismiss: String? = null
+        dismiss: String? = null,
+        extra: View? = null
     ) {
         if (activity.isFinishing || activity.isDestroyed) return
         val d = activity.resources.displayMetrics.density
@@ -71,6 +72,7 @@ object ConfirmSheet {
             setLineSpacing(0f, 1.15f)
             setPadding(0, (8 * d).toInt(), 0, (22 * d).toInt())
         })
+        extra?.let { root.addView(it, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = (18 * d).toInt() }) }
 
         root.addView(LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL

@@ -339,6 +339,7 @@ class GroupProfileActivity : AppCompatActivity() {
             subtitleView.text = getString(R.string.group_members_count, info.members.size)
             currentMemberHashes.clear()
             currentMemberHashes.addAll(info.members.map { it.userHash })
+            adminCount = info.members.count { it.isAdmin }
 
             disappearingSubtitle?.text = pl.sinusoide.sinuschat.util.DisappearingMessages.label(this@GroupProfileActivity, info.disappearingTtlMs)
             currentPerms = info.perms
@@ -453,6 +454,7 @@ class GroupProfileActivity : AppCompatActivity() {
     }
 
     private var amIAdmin = false
+    private var adminCount = 0
     private var isCommunity = false
     private var hasInviteLink = false
     private var inviteRow: View? = null
@@ -1037,31 +1039,175 @@ class GroupProfileActivity : AppCompatActivity() {
             PopupHelper.show(this, getString(R.string.cant_manage_creator))
             return
         }
-        val opcje = if (member.isAdmin) arrayOf(getString(R.string.remove_admin), getString(R.string.kick_from_group))
-        else arrayOf(getString(R.string.make_group_admin), getString(R.string.kick_from_group))
-        AlertDialog.Builder(this, R.style.Theme_SinusChat_Dialog)
-            .setTitle(member.displayName)
-            .setItems(opcje) { _, which ->
-                when (which) {
-                    0 -> GroupRepository.setAdmin(this, groupId, member.userHash, !member.isAdmin) { ok ->
-                        PopupHelper.show(this, if (ok) getString(R.string.group_updated_ok) else getString(R.string.error))
-                        if (ok) loadGroupInfo()
+        val d = dp
+        val sheet = com.google.android.material.bottomsheet.BottomSheetDialog(this, R.style.Theme_SinusChat_BottomSheet)
+        val red = ContextCompat.getColor(this, R.color.sinuschat_error)
+        val green = 0xFF2ECC71.toInt()
+        val accent = tc.accent
+        val name = member.displayName.ifBlank { getString(R.string.group_participant) }
+
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding((20 * d).toInt(), (12 * d).toInt(), (20 * d).toInt(), (20 * d).toInt())
+        }
+        root.addView(View(this).apply {
+            background = android.graphics.drawable.GradientDrawable().apply {
+                cornerRadius = 3 * d; setColor((tc.text2 and 0x00FFFFFF) or 0x55000000)
+            }
+        }, LinearLayout.LayoutParams((36 * d).toInt(), (4 * d).toInt()).apply { bottomMargin = (18 * d).toInt() })
+
+        val avatarSize = (76 * d).toInt()
+        val avatar = ImageView(this).apply {
+            clipToOutline = true
+            background = ContextCompat.getDrawable(this@GroupProfileActivity, R.drawable.bg_avatar_circle)
+        }
+        if (!member.avatarUrl.isNullOrEmpty()) {
+            val fallback = BitmapDrawable(resources, AvatarHelper.createLetterBitmap(
+                AvatarHelper.initialOf(name), member.avatarColor, avatarSize))
+            Glide.with(this).load(member.avatarUrl).signature(ObjectKey(member.avatarUrl))
+                .circleCrop().placeholder(fallback).error(fallback).into(avatar)
+        } else {
+            AvatarHelper.setLetterAvatar(this, avatar, name, member.avatarColor)
+        }
+        root.addView(avatar, LinearLayout.LayoutParams(avatarSize, avatarSize).apply { bottomMargin = (12 * d).toInt() })
+        root.addView(TextView(this).apply {
+            text = name
+            textSize = 20f; setTextColor(tc.text); typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER; maxLines = 2
+        })
+        val roleColor = if (member.isAdmin) green else tc.text2
+        root.addView(TextView(this).apply {
+            text = getString(if (member.isAdmin) R.string.group_admin else R.string.group_member_role)
+            textSize = 12.5f; setTextColor(roleColor)
+            background = android.graphics.drawable.GradientDrawable().apply {
+                cornerRadius = 12f * d; setColor((roleColor and 0x00FFFFFF) or 0x26000000)
+            }
+            setPadding((12 * d).toInt(), (5 * d).toInt(), (12 * d).toInt(), (5 * d).toInt())
+        }, LinearLayout.LayoutParams(-2, -2).apply {
+            topMargin = (8 * d).toInt(); bottomMargin = (20 * d).toInt()
+        })
+
+        val body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        root.addView(body, LinearLayout.LayoutParams(-1, -2))
+
+        fun actionRow(icon: Int, tint: Int, title: String, desc: String, titleColor: Int, onClick: (View) -> Unit) =
+            LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding((14 * d).toInt(), (14 * d).toInt(), (14 * d).toInt(), (14 * d).toInt())
+                isClickable = true; isFocusable = true
+                foreground = ContextCompat.getDrawable(this@GroupProfileActivity, R.drawable.bg_menu_ripple)
+                setOnClickListener(onClick)
+                addView(ImageView(context).apply {
+                    setImageResource(icon); setColorFilter(tint)
+                    background = android.graphics.drawable.GradientDrawable().apply {
+                        shape = android.graphics.drawable.GradientDrawable.OVAL
+                        setColor((tint and 0x00FFFFFF) or 0x26000000)
                     }
-                    1 -> AlertDialog.Builder(this, R.style.Theme_SinusChat_Dialog)
-                        .setTitle(getString(R.string.kick_from_group))
-                        .setMessage(getString(R.string.kick_member_q, member.displayName))
-                        .setPositiveButton(getString(R.string.kick_word)) { _, _ ->
-                            GroupRepository.kickMember(this, groupId, member.userHash) { ok ->
-                                PopupHelper.show(this, if (ok) getString(R.string.member_kicked_ok) else getString(R.string.error))
-                                if (ok) loadGroupInfo()
-                            }
-                        }
-                        .setNegativeButton(getString(R.string.cancel), null)
-                        .show()
+                    val p = (10 * d).toInt(); setPadding(p, p, p, p)
+                }, LinearLayout.LayoutParams((42 * d).toInt(), (42 * d).toInt()).apply { marginEnd = (14 * d).toInt() })
+                addView(LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
+                    addView(TextView(context).apply {
+                        text = title; textSize = 15.5f; setTextColor(titleColor); typeface = Typeface.DEFAULT_BOLD
+                    })
+                    addView(TextView(context).apply {
+                        text = desc; textSize = 12.5f; setTextColor(tc.text2)
+                        setLineSpacing(0f, 1.1f)
+                        setPadding(0, (2 * d).toInt(), 0, 0)
+                    })
+                }, LinearLayout.LayoutParams(0, -2, 1f))
+            }
+
+        fun card() = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            clipToOutline = true
+            background = android.graphics.drawable.GradientDrawable().apply {
+                cornerRadius = 18 * d; setColor(pl.sinusoide.sinuschat.ui.ThemeUi.card(this@GroupProfileActivity))
+            }
+        }
+
+        fun cancelLink(onClick: () -> Unit) = TextView(this).apply {
+            text = getString(R.string.cancel)
+            textSize = 15f; setTextColor(tc.text2); gravity = Gravity.CENTER
+            setPadding(0, (16 * d).toInt(), 0, (4 * d).toInt())
+            isClickable = true
+            setOnClickListener { onClick() }
+        }
+
+        fun showConfirmKick() {
+            body.removeAllViews()
+            body.addView(TextView(this).apply {
+                text = getString(R.string.kick_member_q, name)
+                textSize = 17f; setTextColor(tc.text); typeface = Typeface.DEFAULT_BOLD
+                gravity = Gravity.CENTER
+            })
+            body.addView(TextView(this).apply {
+                text = getString(R.string.kick_confirm_desc)
+                textSize = 13.5f; setTextColor(tc.text2); gravity = Gravity.CENTER
+                setLineSpacing(0f, 1.15f)
+                setPadding(0, (8 * d).toInt(), 0, (20 * d).toInt())
+            })
+            val kickBtn = TextView(this).apply {
+                text = getString(R.string.kick_word)
+                textSize = 16f; setTextColor(Color.WHITE); typeface = Typeface.DEFAULT_BOLD
+                gravity = Gravity.CENTER
+                background = android.graphics.drawable.GradientDrawable().apply { cornerRadius = 26 * d; setColor(red) }
+                setPadding(0, (14 * d).toInt(), 0, (14 * d).toInt())
+                isClickable = true
+            }
+            kickBtn.setOnClickListener {
+                kickBtn.isEnabled = false; kickBtn.alpha = 0.6f
+                GroupRepository.kickMember(this, groupId, member.userHash) { ok ->
+                    if (isFinishing || isDestroyed) return@kickMember
+                    if (ok) {
+                        sheet.dismiss()
+                        PopupHelper.show(this, getString(R.string.member_kicked_ok))
+                        loadGroupInfo()
+                    } else {
+                        kickBtn.isEnabled = true; kickBtn.alpha = 1f
+                        PopupHelper.showError(this, getString(R.string.error))
+                    }
                 }
             }
-            .setNegativeButton(getString(R.string.cancel), null)
-            .show()
+            body.addView(kickBtn, LinearLayout.LayoutParams(-1, -2))
+            body.addView(cancelLink { sheet.dismiss() }, LinearLayout.LayoutParams(-1, -2))
+        }
+
+        val actions = card()
+        var busy = false
+        actions.addView(actionRow(
+            R.drawable.ic_shield, if (member.isAdmin) tc.text2 else accent,
+            getString(if (member.isAdmin) R.string.remove_admin else R.string.make_group_admin),
+            getString(if (member.isAdmin) R.string.remove_admin_desc else R.string.make_admin_desc),
+            tc.text
+        ) { row ->
+            if (busy) return@actionRow
+            busy = true; row.alpha = 0.6f
+            GroupRepository.setAdmin(this, groupId, member.userHash, !member.isAdmin) { ok ->
+                if (isFinishing || isDestroyed) return@setAdmin
+                busy = false; row.alpha = 1f
+                if (ok) {
+                    sheet.dismiss()
+                    PopupHelper.show(this, getString(
+                        if (member.isAdmin) R.string.member_admin_removed else R.string.member_admin_made, name))
+                    loadGroupInfo()
+                } else PopupHelper.showError(this, getString(R.string.error))
+            }
+        })
+        actions.addView(View(this).apply {
+            setBackgroundColor((tc.text2 and 0x00FFFFFF) or 0x22000000)
+        }, LinearLayout.LayoutParams(-1, (1 * d).toInt().coerceAtLeast(1)).apply { marginStart = (70 * d).toInt() })
+        actions.addView(actionRow(
+            R.drawable.ic_person_remove, red,
+            getString(R.string.kick_from_group), getString(R.string.kick_desc), red
+        ) { if (!busy) showConfirmKick() })
+        body.addView(actions, LinearLayout.LayoutParams(-1, -2))
+        body.addView(cancelLink { sheet.dismiss() }, LinearLayout.LayoutParams(-1, -2))
+
+        sheet.setContentView(root)
+        pl.sinusoide.sinuschat.ui.FlowGlass.show(sheet)
     }
 
     private var muteSubtitle: TextView? = null
@@ -1181,6 +1327,23 @@ class GroupProfileActivity : AppCompatActivity() {
             setLineSpacing(0f, 1.15f)
             setPadding(0, (8 * d).toInt(), 0, (20 * d).toInt())
         })
+        if (amIAdmin && adminCount <= 1 && currentMemberHashes.size > 1) {
+            root.addView(LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    cornerRadius = 16 * d; setColor((red and 0x00FFFFFF) or 0x1F000000)
+                }
+                setPadding((14 * d).toInt(), (12 * d).toInt(), (14 * d).toInt(), (12 * d).toInt())
+                addView(ImageView(context).apply {
+                    setImageResource(R.drawable.ic_warning); setColorFilter(red)
+                }, LinearLayout.LayoutParams((22 * d).toInt(), (22 * d).toInt()).apply { marginEnd = (12 * d).toInt() })
+                addView(TextView(context).apply {
+                    text = getString(R.string.leave_last_admin_warn)
+                    textSize = 13f; setTextColor(tc.text); setLineSpacing(0f, 1.15f)
+                }, LinearLayout.LayoutParams(0, -2, 1f))
+            }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = (16 * d).toInt() })
+        }
 
         val silentSwitch = com.google.android.material.materialswitch.MaterialSwitch(this).apply {
             isClickable = false
@@ -1244,7 +1407,7 @@ class GroupProfileActivity : AppCompatActivity() {
                 if (ok) {
                     sheet.dismiss()
                     PopupHelper.show(this, getString(R.string.group_left))
-                    finishAffinity()
+                    pl.sinusoide.sinuschat.util.HomeNav.backToChats(this)
                 } else {
                     leaveBtn.isEnabled = true; leaveBtn.alpha = 1f
                     PopupHelper.showError(this, getString(R.string.error))

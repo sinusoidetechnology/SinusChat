@@ -73,17 +73,66 @@ object LocalChats {
         val out = JSONArray()
         val seen = HashSet<String>()
         val dao = try { SinusChatDatabase.getInstance(ctx).messageDao() } catch (_: Exception) { null }
+        val previousGroups = ConversationCache.load(ctx)?.let { arr ->
+            (0 until arr.length()).mapNotNull { arr.optJSONObject(it)?.optString("id")?.takeIf { id -> isGroup(id) } }
+        } ?: emptyList()
         initGroupReadMarks(ctx, me, server)
         for (i in 0 until server.length()) {
             val o = server.optJSONObject(i) ?: continue
             val id = o.optString("id")
             if (id.isEmpty()) continue
             if (isDirect(id)) o.optString("other_hash").takeIf { it.isNotEmpty() && it != "null" }?.let { add(ctx, id, it) }
-            if (isGroup(id)) fillGroup(ctx, dao, me, o)
+            if (isGroup(id)) {
+                if (GroupEnded.reason(ctx, id) != null) GroupEnded.clear(ctx, id)
+                fillGroup(ctx, dao, me, o)
+            }
             seen.add(id)
             out.put(o)
         }
+        GroupEnded.checkMissing(ctx, previousGroups, seen)
+        for (row in GroupEnded.rows(ctx)) {
+            val id = row.optString("id")
+            if (id.isEmpty() || !seen.add(id)) continue
+            fillGroup(ctx, dao, me, row)
+            out.put(row)
+        }
         initReadMarks(ctx)
+        val local = localRows(ctx, me, seen, dao)
+        fillPresence(ctx, local)
+        fillMissingNames(ctx, local)
+        val all = (0 until out.length()).map { out.getJSONObject(it) } + local
+        val sorted = all.sortedByDescending { it.optLong("last_message_at", 0L) }
+        return JSONArray().apply { sorted.forEach { put(it) } }
+    }
+
+    fun offline(ctx: Context, me: String, cached: JSONArray?): JSONArray {
+        val rows = ArrayList<JSONObject>()
+        val seen = HashSet<String>()
+        val dao = try { SinusChatDatabase.getInstance(ctx).messageDao() } catch (_: Exception) { null }
+        if (cached != null) for (i in 0 until cached.length()) {
+            val o = cached.optJSONObject(i) ?: continue
+            val id = o.optString("id")
+            if (id.isEmpty() || !seen.add(id)) continue
+            if (isGroup(id)) fillGroup(ctx, dao, me, o)
+            rows.add(o)
+        }
+        for (row in GroupEnded.rows(ctx)) {
+            val id = row.optString("id")
+            if (id.isEmpty() || !seen.add(id)) continue
+            fillGroup(ctx, dao, me, row)
+            rows.add(row)
+        }
+        rows.addAll(localRows(ctx, me, seen, dao))
+        val sorted = rows.sortedByDescending { it.optLong("last_message_at", 0L) }
+        return JSONArray().apply { sorted.forEach { put(it) } }
+    }
+
+    private fun localRows(
+        ctx: Context,
+        me: String,
+        seen: Set<String>,
+        dao: pl.sinusoide.sinuschat.data.MessageDao?
+    ): List<JSONObject> {
         val known = explicit(ctx)
         val ids = LinkedHashSet<String>().apply { addAll(known.keys); addAll(dbIds(ctx).filter { isDirect(it) }) }
         val local = ArrayList<JSONObject>()
@@ -106,11 +155,7 @@ object LocalChats {
                 .put("last_heartbeat_ms", 0)
                 .put("last_seen_ms", 0))
         }
-        fillPresence(ctx, local)
-        fillMissingNames(ctx, local)
-        val all = (0 until out.length()).map { out.getJSONObject(it) } + local
-        val sorted = all.sortedByDescending { it.optLong("last_message_at", 0L) }
-        return JSONArray().apply { sorted.forEach { put(it) } }
+        return local
     }
 
     private fun initReadMarks(ctx: Context) {

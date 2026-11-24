@@ -154,6 +154,19 @@ class BackupActivity : AppCompatActivity() {
             insets
         }
         refresh()
+        if (intent.getBooleanExtra(EXTRA_INSPECT_EXTERNAL, false)) {
+            pl.sinusoide.sinuschat.backup.ExternalBackup.inspectFileIfReady(this)?.let { file ->
+                PopupHelper.show(this, getString(R.string.ext_import_inspect_only))
+                verifyBackup(Uri.fromFile(file))
+            }
+        }
+    }
+
+    override fun onDestroy() {
+        if (intent.getBooleanExtra(EXTRA_INSPECT_EXTERNAL, false) && isFinishing) {
+            pl.sinusoide.sinuschat.backup.ExternalBackup.clearInspect(this)
+        }
+        super.onDestroy()
     }
 
     override fun onResume() {
@@ -823,8 +836,9 @@ class BackupActivity : AppCompatActivity() {
         return bar
     }
 
-    private companion object {
-        const val OTHER_DRIVE_MS = 4000L
+    companion object {
+        const val EXTRA_INSPECT_EXTERNAL = "inspect_external"
+        private const val OTHER_DRIVE_MS = 4000L
     }
 
     private fun date(ms: Long): String =

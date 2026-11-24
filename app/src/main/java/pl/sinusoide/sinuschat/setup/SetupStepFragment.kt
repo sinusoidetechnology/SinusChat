@@ -1155,6 +1155,26 @@ class SetupStepFragment : Fragment() {
             }
             return
         }
+        pl.sinusoide.sinuschat.backup.ExternalBackup.pendingRestore(requireContext())?.let { file ->
+            val from = pl.sinusoide.sinuschat.backup.ExternalBackup.sourceLabel(requireContext())
+                ?: getString(R.string.ext_restore_other_app)
+            option(getString(R.string.ext_restore_option), getString(R.string.ext_restore_option_sub, from), selected = true) {
+                restoreExternal(file)
+            }
+            if (!externalOffered) {
+                externalOffered = true
+                content.post {
+                    if (!isAdded) return@post
+                    pl.sinusoide.sinuschat.ui.ConfirmSheet.show(requireActivity(),
+                        icon = R.drawable.ic_backup,
+                        color = pl.sinusoide.sinuschat.ui.ThemeUi.accent(requireContext()),
+                        title = getString(R.string.ext_restore_offer_title),
+                        message = getString(R.string.ext_restore_offer_msg, from),
+                        confirm = getString(R.string.ext_restore_offer_confirm),
+                        onConfirm = { if (isAdded) restoreExternal(file) })
+                }
+            }
+        }
         option(getString(R.string.setup_transfer_usb), getString(R.string.setup_transfer_usb_sub)) {
             pickFromUsb()
         }
@@ -1176,6 +1196,16 @@ class SetupStepFragment : Fragment() {
     private fun scanFromPhone() {
         retry = { scanFromPhone() }
         scanMoveCode.launch(Intent(requireContext(), pl.sinusoide.sinuschat.messenger.QrScanActivity::class.java))
+    }
+
+    private var externalOffered = false
+
+    private fun restoreExternal(file: java.io.File) {
+        retry = { restoreExternal(file) }
+        restoreUri = null
+        restoreFile = file
+        restoreDriveHidden = null
+        askKeyFor { file.inputStream() }
     }
 
     private fun pickFile() {
@@ -1347,6 +1377,7 @@ class SetupStepFragment : Fragment() {
         }
         restoreFile?.delete()
         restoreFile = null
+        pl.sinusoide.sinuschat.backup.ExternalBackup.clearPending(app)
         val accountEmail = when {
             loggedIn() -> email()
             account != null && account.email.isNotEmpty() -> account.email

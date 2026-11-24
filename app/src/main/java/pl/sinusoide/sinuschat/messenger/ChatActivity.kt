@@ -584,7 +584,12 @@ open class ChatActivity : AppCompatActivity() {
 
     private fun loadGroupProfile() {
         GroupRepository.getGroupInfo(this, conversationId) { info ->
-            if (info == null) return@getGroupInfo
+            if (info == null) {
+                val app = applicationContext
+                val gid = conversationId
+                AppExecutor.io { pl.sinusoide.sinuschat.util.GroupEnded.verify(app, gid) }
+                return@getGroupInfo
+            }
             amIGroupAdmin = info.amIAdmin
             groupPerms = info.perms
             applyGroupPermissions()
@@ -746,6 +751,10 @@ open class ChatActivity : AppCompatActivity() {
 
     private var isOnline = true
     private val openProfile = View.OnClickListener {
+        pl.sinusoide.sinuschat.util.GroupEnded.reason(this, conversationId)?.let {
+            PopupHelper.show(this, pl.sinusoide.sinuschat.util.GroupEnded.bannerText(this, it))
+            return@OnClickListener
+        }
         if (GroupRepository.isGroup(conversationId)) {
             startActivity(Intent(this, GroupProfileActivity::class.java).apply {
                 putExtra("conversationId", conversationId)
@@ -978,7 +987,7 @@ open class ChatActivity : AppCompatActivity() {
         setupScrollDownButton()
         MessageListenerService.triggerAckCheck(this)
 
-        btnBack.setOnClickListener { finish() }
+        btnBack.setOnClickListener { closeChat() }
         btnAttach.setOnClickListener { showAttachBottomSheet() }
         btnMore.setOnClickListener { showPinnedMessages() }
 
@@ -1212,7 +1221,7 @@ open class ChatActivity : AppCompatActivity() {
                     ::searchContainer.isInitialized && isSearching -> {
                         hideSearchBar()
                     }
-                    else -> finish()
+                    else -> closeChat()
                 }
             }
         })
@@ -2607,7 +2616,6 @@ open class ChatActivity : AppCompatActivity() {
         PopupHelper.show(this, if (newVal) getString(R.string.pinned) else getString(R.string.unpinned))
     }
 
-    private fun deleteMessage(item: MessageEntity) = deleteMessages(listOf(item))
 
     private fun dustVanishedMessages(next: List<MessageEntity>) {
         val shown = adapter.currentList
@@ -2684,101 +2692,7 @@ open class ChatActivity : AppCompatActivity() {
         val ids = adapter.selectedIds.toSet()
         val items = allMessages.filter { it.id in ids && it.id !in pendingDeleteIds }
         if (items.isEmpty()) return
-        confirmDeleteMessages(items)
-    }
-
-    private fun confirmDeleteMessages(items: List<MessageEntity>) {
-        val item = items.first()
-        val many = items.size > 1
-        val d = resources.displayMetrics.density
-        val red = 0xFFE5484D.toInt()
-        val secondary = pl.sinusoide.sinuschat.ui.ThemeUi.textSecondary(this)
-        val sheet = BottomSheetDialog(this, R.style.Theme_SinusChat_BottomSheet)
-
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-            setPadding((24 * d).toInt(), (12 * d).toInt(), (24 * d).toInt(), (20 * d).toInt())
-        }
-        root.addView(View(this).apply {
-            background = GradientDrawable().apply { cornerRadius = 3 * d; setColor((pl.sinusoide.sinuschat.ui.ThemeUi.textSecondary(this@ChatActivity) and 0x00FFFFFF) or 0x55000000) }
-        }, LinearLayout.LayoutParams((36 * d).toInt(), (4 * d).toInt()).apply {
-            bottomMargin = (20 * d).toInt()
-        })
-        root.addView(ImageView(this).apply {
-            setImageResource(R.drawable.ic_delete); setColorFilter(red)
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor((red and 0x00FFFFFF) or 0x26000000)
-            }
-            val p = (16 * d).toInt(); setPadding(p, p, p, p)
-        }, LinearLayout.LayoutParams((64 * d).toInt(), (64 * d).toInt()).apply {
-            bottomMargin = (16 * d).toInt()
-        })
-        root.addView(TextView(this).apply {
-            text = if (many) getString(R.string.delete_messages_q, items.size) else getString(R.string.delete_message_q)
-            textSize = 20f; setTextColor(pl.sinusoide.sinuschat.ui.ThemeUi.textPrimary(this@ChatActivity)); typeface = android.graphics.Typeface.DEFAULT_BOLD
-            gravity = Gravity.CENTER
-        })
-        root.addView(TextView(this).apply {
-            text = getString(when {
-                many && GroupRepository.isGroup(conversationId) -> R.string.delete_messages_desc_group
-                many -> R.string.delete_messages_desc
-                GroupRepository.isGroup(conversationId) -> R.string.delete_message_desc_group
-                else -> R.string.delete_message_desc
-            })
-            textSize = 14f; setTextColor(secondary); gravity = Gravity.CENTER
-            setPadding(0, (8 * d).toInt(), 0, (18 * d).toInt())
-        })
-
-        val preview = when {
-            item.viewOnce -> getString(R.string.view_once_sent)
-            item.type == MessageEntity.TYPE_VOICE -> getString(R.string.voice_message)
-            item.type == "attachment" -> item.attachmentName?.takeIf { it.isNotBlank() }
-                ?: getString(R.string.photo)
-            else -> item.text
-        }
-        val mine = item.senderHash == myPhoneHash
-        if (!many) root.addView(LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            background = GradientDrawable().apply { cornerRadius = 16 * d; setColor(pl.sinusoide.sinuschat.ui.ThemeUi.card(this@ChatActivity)) }
-            setPadding((16 * d).toInt(), (12 * d).toInt(), (16 * d).toInt(), (12 * d).toInt())
-            addView(TextView(this@ChatActivity).apply {
-                text = if (mine) getString(R.string.you)
-                       else pl.sinusoide.sinuschat.util.ContactCache.getName(this@ChatActivity, item.senderHash)
-                            ?: otherUserName
-                textSize = 12f; setTextColor(pl.sinusoide.sinuschat.ui.ThemeUi.accent(this@ChatActivity))
-            })
-            addView(TextView(this@ChatActivity).apply {
-                text = preview
-                textSize = 15f; setTextColor(pl.sinusoide.sinuschat.ui.ThemeUi.textPrimary(this@ChatActivity))
-                maxLines = 3; ellipsize = android.text.TextUtils.TruncateAt.END
-                setPadding(0, (2 * d).toInt(), 0, 0)
-            })
-        }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = (22 * d).toInt() })
-
-        root.addView(TextView(this).apply {
-            text = getString(R.string.delete)
-            textSize = 16f; setTextColor(Color.WHITE); typeface = android.graphics.Typeface.DEFAULT_BOLD
-            gravity = Gravity.CENTER
-            background = GradientDrawable().apply { cornerRadius = 26 * d; setColor(red) }
-            setPadding(0, (14 * d).toInt(), 0, (14 * d).toInt())
-            isClickable = true
-            setOnClickListener {
-                sheet.dismiss()
-                recycler.post { if (many) deleteMessages(items) else deleteMessage(item) }
-            }
-        }, LinearLayout.LayoutParams(-1, -2))
-        root.addView(TextView(this).apply {
-            text = getString(R.string.cancel)
-            textSize = 15f; setTextColor(secondary); gravity = Gravity.CENTER
-            setPadding(0, (14 * d).toInt(), 0, (4 * d).toInt())
-            isClickable = true
-            setOnClickListener { sheet.dismiss() }
-        }, LinearLayout.LayoutParams(-1, -2))
-
-        sheet.setContentView(root)
-        pl.sinusoide.sinuschat.ui.FlowGlass.show(sheet)
+        deleteMessages(items)
     }
 
     private fun attachSwipeToReply() {
@@ -3142,6 +3056,8 @@ open class ChatActivity : AppCompatActivity() {
             chatBlockedBar.visibility = View.GONE
             chatRequestBar.visibility = View.GONE
             chatDisappearingBar.visibility = View.GONE
+            if (showGroupEndedIfNeeded()) return
+            showDeletedBar(false)
             applyGroupPermissions()
             return
         }
@@ -3247,9 +3163,13 @@ open class ChatActivity : AppCompatActivity() {
             onConfirm = {
                 MessageRepository.deleteConversation(this, conversationId, myPhoneHash, null)
                 PopupHelper.show(this, getString(R.string.chat_deleted))
-                finish()
+                closeChat()
             }
         )
+    }
+
+    private fun closeChat() {
+        if (this is BubbleChatActivity) finish() else pl.sinusoide.sinuschat.util.HomeNav.closeToChats(this)
     }
 
     private fun markReadIfNeeded(messages: List<MessageEntity>) {
@@ -3281,6 +3201,10 @@ open class ChatActivity : AppCompatActivity() {
 
     private fun blockedFromSending(): Boolean {
         if (GroupRepository.isGroup(conversationId)) {
+            pl.sinusoide.sinuschat.util.GroupEnded.reason(this, conversationId)?.let {
+                PopupHelper.showError(this, pl.sinusoide.sinuschat.util.GroupEnded.bannerText(this, it))
+                return true
+            }
             if (canSendInGroup()) return false
             PopupHelper.showError(this, getString(R.string.group_cant_write))
             return true
@@ -3297,8 +3221,9 @@ open class ChatActivity : AppCompatActivity() {
     }
 
     private var deletedBar: View? = null
+    private var deletedBarText: TextView? = null
 
-    private fun showDeletedBar(show: Boolean) {
+    private fun showDeletedBar(show: Boolean, message: String? = null) {
         if (!show) { deletedBar?.visibility = View.GONE; return }
         val bar = deletedBar ?: run {
             val dp = resources.displayMetrics.density
@@ -3313,7 +3238,9 @@ open class ChatActivity : AppCompatActivity() {
                     text = getString(R.string.chat_account_deleted)
                     textSize = 13.5f
                     gravity = Gravity.CENTER
+                    setLineSpacing(0f, 1.15f)
                     setTextColor(pl.sinusoide.sinuschat.ui.ThemeUi.textSecondary(this@ChatActivity))
+                    deletedBarText = this
                 })
                 addView(TextView(this@ChatActivity).apply {
                     text = getString(R.string.delete_chat)
@@ -3330,6 +3257,7 @@ open class ChatActivity : AppCompatActivity() {
             deletedBar = v
             v
         }
+        deletedBarText?.text = message ?: getString(R.string.chat_account_deleted)
         bar.visibility = View.VISIBLE
     }
 
@@ -3772,9 +3700,25 @@ open class ChatActivity : AppCompatActivity() {
         }
     }
 
+    private fun showGroupEndedIfNeeded(): Boolean {
+        if (!GroupRepository.isGroup(conversationId) || !::chatInputContainer.isInitialized) return false
+        val reason = pl.sinusoide.sinuschat.util.GroupEnded.reason(this, conversationId) ?: return false
+        if (voiceRecordingOverlay != null) cancelVoiceRecording()
+        chatInputContainer.visibility = View.GONE
+        groupReadOnlyBar?.visibility = View.GONE
+        btnCall.visibility = View.GONE
+        btnVideo.visibility = View.GONE
+        btnWalkie.visibility = View.GONE
+        showDeletedBar(true, pl.sinusoide.sinuschat.util.GroupEnded.bannerText(this, reason))
+        getSystemService(android.view.inputmethod.InputMethodManager::class.java)
+            ?.hideSoftInputFromWindow(inputMessage.windowToken, 0)
+        return true
+    }
+
     private fun applyGroupPermissions() {
         if (!GroupRepository.isGroup(conversationId)) return
         if (!::chatInputContainer.isInitialized) return
+        if (showGroupEndedIfNeeded()) return
 
         val canCall = canCallInGroup()
         btnCall.visibility  = if (canCall) View.VISIBLE else View.GONE
@@ -3815,7 +3759,9 @@ open class ChatActivity : AppCompatActivity() {
 
     private val groupSettingsReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
-            if (intent.getStringExtra("groupId") == conversationId) loadGroupProfile()
+            if (intent.getStringExtra("groupId") != conversationId) return
+            if (intent.action == pl.sinusoide.sinuschat.util.GroupEnded.ACTION) updateInputVisibility(allMessages)
+            else loadGroupProfile()
         }
     }
 
@@ -4462,6 +4408,7 @@ open class ChatActivity : AppCompatActivity() {
             registerReceiver(disappearingRequestReceiver, filter)
         }
         val gFilter = IntentFilter(GROUP_SETTINGS_CHANGED)
+        gFilter.addAction(pl.sinusoide.sinuschat.util.GroupEnded.ACTION)
         if (Build.VERSION.SDK_INT >= 33) {
             registerReceiver(groupSettingsReceiver, gFilter, RECEIVER_NOT_EXPORTED)
         } else {

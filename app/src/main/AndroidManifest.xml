@@ -505,6 +505,41 @@
         <receiver
             android:name=".util.TranslationNotifier$CancelReceiver"
             android:exported="false" />
+        <activity
+            android:name=".backup.ExternalExportActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode"
+            android:theme="@style/Theme.SinusChat.Overlay">
+            <intent-filter>
+                <action android:name="pl.sinusoide.sinuschat.action.EXPORT_BACKUP" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".backup.ExternalImportActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode"
+            android:theme="@style/Theme.SinusChat.Overlay">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/octet-stream" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:host="*" />
+                <data android:mimeType="*/*" />
+                <data android:pathPattern=".*\\.sinuschat" />
+                <data android:pathPattern=".*\\..*\\.sinuschat" />
+                <data android:pathPattern=".*\\..*\\..*\\.sinuschat" />
+            </intent-filter>
+        </activity>
     </application>
 
 </manifest>

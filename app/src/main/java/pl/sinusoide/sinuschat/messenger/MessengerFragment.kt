@@ -66,24 +66,38 @@ class MessengerFragment : Fragment() {
         if (isAdded && isOnline && myPhoneHash.isNotEmpty()) loadConversations()
     }
 
-    private var isOnline = true
+    private var netState = pl.sinusoide.sinuschat.util.NetState.OK
+    private val isOnline: Boolean get() = netState != pl.sinusoide.sinuschat.util.NetState.NO_NETWORK
     private lateinit var connectivityManager: ConnectivityManager
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
-            isOnline = true
-            view?.post { updateOfflineBanner(false); loadConversations() }
+            view?.post { refreshNet(); loadConversations() }
         }
         override fun onLost(network: Network) {
-            val up = networkUp()
-            isOnline = up
-            view?.post { updateOfflineBanner(!up) }
+            view?.post { refreshNet() }
+        }
+        override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
+            view?.post {
+                val was = netState
+                refreshNet()
+                if (was != pl.sinusoide.sinuschat.util.NetState.OK && netState == pl.sinusoide.sinuschat.util.NetState.OK) loadConversations()
+            }
         }
     }
 
-    private fun networkUp(): Boolean {
-        val cm = connectivityManager
-        val caps = cm.activeNetwork?.let { cm.getNetworkCapabilities(it) } ?: return false
-        return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+    private val serverListener: () -> Unit = {
+        AppExecutor.main {
+            if (!isAdded) return@main
+            val was = netState
+            refreshNet()
+            if (was != pl.sinusoide.sinuschat.util.NetState.OK && netState == pl.sinusoide.sinuschat.util.NetState.OK) loadConversations()
+        }
+    }
+
+    private fun refreshNet() {
+        val ctx = context ?: return
+        netState = pl.sinusoide.sinuschat.util.NetState.state(ctx)
+        updateOfflineBanner(netState)
     }
 
     private val privacyListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
@@ -99,8 +113,8 @@ class MessengerFragment : Fragment() {
     private val refreshHandler = Handler(Looper.getMainLooper())
     private val refreshRunnable = object : Runnable {
         override fun run() {
-            if (isOnline) loadConversations()
-            updateOfflineBanner(!isOnline)
+            refreshNet()
+            if (isOnline) loadConversations() else renderOffline()
             refreshHandler.postDelayed(this, 30_000L)
         }
     }
@@ -129,9 +143,9 @@ class MessengerFragment : Fragment() {
         setupGreeting()
 
         connectivityManager = requireContext().getSystemService(ConnectivityManager::class.java)
-        isOnline = networkUp()
         connectivityManager.registerDefaultNetworkCallback(networkCallback)
-        updateOfflineBanner(!isOnline)
+        pl.sinusoide.sinuschat.util.NetState.listen(serverListener)
+        refreshNet()
 
         ViewCompat.setOnApplyWindowInsetsListener(fab) { v, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
@@ -239,8 +253,8 @@ class MessengerFragment : Fragment() {
         super.onResume()
         openingChat = false
         if (::adapter.isInitialized) adapter.notifyDataSetChanged()
+        refreshNet()
         if (isOnline) loadConversations()
-        updateOfflineBanner(!isOnline)
         refreshHandler.removeCallbacks(refreshRunnable)
         refreshHandler.postDelayed(refreshRunnable, 30_000L)
         try {
@@ -265,24 +279,42 @@ class MessengerFragment : Fragment() {
         super.onDestroyView()
         refreshHandler.removeCallbacksAndMessages(null)
         try { connectivityManager.unregisterNetworkCallback(networkCallback) } catch (_: Exception) {}
+        pl.sinusoide.sinuschat.util.NetState.unlisten(serverListener)
     }
 
     private fun renderFromCache() {
         val ctx = context ?: return
-        val arr = pl.sinusoide.sinuschat.util.ConversationCache.load(ctx) ?: return
-        
-        val cachedItems = parseConversations(ctx, arr, applyAcks = false)
-        if (cachedItems.isNotEmpty()) {
-            animateListOnce(cachedItems.isNotEmpty())
-            adapter.submitList(cachedItems)
-            emptyView.visibility = View.GONE
-            recycler.visibility = View.VISIBLE
+        val arr = pl.sinusoide.sinuschat.util.ConversationCache.load(ctx)
+        if (arr != null) {
+            val cachedItems = parseConversations(ctx, arr, applyAcks = false)
+            if (cachedItems.isNotEmpty()) {
+                animateListOnce(true)
+                adapter.submitList(cachedItems)
+                emptyView.visibility = View.GONE
+                recycler.visibility = View.VISIBLE
+            }
         }
+        renderOffline()
+    }
 
-        AppExecutor.io {
-            val enriched = enrichWithPreviewsSync(ctx, cachedItems)
-            if (enriched != cachedItems) {
-                AppExecutor.main { adapter.submitList(enriched) }
+    @Volatile private var serverListShown = false
+
+    private fun renderOffline() {
+        val ctx = context ?: return
+        val me = myPhoneHash
+        AppExecutor.local {
+            if (serverListShown) return@local
+            val arr = try {
+                pl.sinusoide.sinuschat.util.LocalChats.offline(ctx, me, pl.sinusoide.sinuschat.util.ConversationCache.load(ctx))
+            } catch (_: Exception) { return@local }
+            if (!isAdded) return@local
+            val items = enrichWithPreviewsSync(ctx, parseConversations(ctx, arr, applyAcks = false))
+            AppExecutor.main {
+                if (!isAdded || serverListShown) return@main
+                animateListOnce(items.isNotEmpty())
+                adapter.submitList(items)
+                showEmpty(items.isEmpty())
+                recycler.visibility = if (items.isEmpty()) View.GONE else View.VISIBLE
             }
         }
     }
@@ -347,8 +379,12 @@ class MessengerFragment : Fragment() {
     private fun loadConversations() {
         val ctx = context ?: return
         AppExecutor.io {
-            val server: JSONArray = ApiClient.getArray("/api/conversations", ctx)
-                ?: return@io
+            val server: JSONArray? = ApiClient.getArray("/api/conversations", ctx)
+            if (server == null) {
+                serverListShown = false
+                AppExecutor.main { if (isAdded) { refreshNet(); renderOffline() } }
+                return@io
+            }
             val arr = pl.sinusoide.sinuschat.util.LocalChats.merge(ctx, myPhoneHash, server)
 
             pl.sinusoide.sinuschat.crypto.GroupMeta.openConversations(ctx, arr)
@@ -361,6 +397,8 @@ class MessengerFragment : Fragment() {
 
             AppExecutor.main {
                 if (!isAdded) return@main
+                serverListShown = true
+                refreshNet()
                 animateListOnce(enriched.isNotEmpty())
                 val atTop = !recycler.canScrollVertically(-1)
                 adapter.submitList(enriched) { if (atTop && isAdded) recycler.scrollToPosition(0) }
@@ -405,15 +443,17 @@ class MessengerFragment : Fragment() {
         return enrichedList
     }
 
-    private var bannerQuiet: Boolean? = null
+    private var bannerKind: Int? = null
 
-    private fun updateOfflineBanner(offline: Boolean) {
+    private fun updateOfflineBanner(state: Int) {
         if (!isAdded) return
         val ctx = requireContext()
+        val offline = state != pl.sinusoide.sinuschat.util.NetState.OK
         val quiet = !offline && pl.sinusoide.sinuschat.util.NotificationPrefs.isQuietNow(ctx)
         val show = offline || quiet
-        if (show && bannerQuiet != quiet) {
-            bannerQuiet = quiet
+        val kind = if (quiet) -1 else state
+        if (show && bannerKind != kind) {
+            bannerKind = kind
             val icon = offlineBanner.findViewById<android.widget.ImageView>(R.id.offline_banner_icon)
             val text = offlineBanner.findViewById<android.widget.TextView>(R.id.offline_banner_text)
             if (quiet) {
@@ -434,7 +474,8 @@ class MessengerFragment : Fragment() {
                 icon.setImageResource(R.drawable.ic_offline)
                 icon.imageTintList = android.content.res.ColorStateList.valueOf(orange)
                 text.setTextColor(orange)
-                text.text = getString(R.string.offline_mode_no_connection)
+                text.text = getString(if (state == pl.sinusoide.sinuschat.util.NetState.NO_INTERNET)
+                    R.string.offline_mode_no_internet else R.string.offline_mode_no_connection)
             }
         } else if (show && quiet) {
             offlineBanner.findViewById<android.widget.TextView>(R.id.offline_banner_text).text =

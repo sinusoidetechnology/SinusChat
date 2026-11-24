@@ -628,6 +628,10 @@ object MessageRepository {
             try { pl.sinusoide.sinuschat.util.ConversationCache.remove(context, conversationId) } catch (_: Exception) {}
             pl.sinusoide.sinuschat.util.LocalChats.remove(context, conversationId)
             pl.sinusoide.sinuschat.util.ChatBubbles.forget(context, conversationId)
+            if (pl.sinusoide.sinuschat.util.GroupEnded.reason(context, conversationId) != null) {
+                pl.sinusoide.sinuschat.util.GroupEnded.clear(context, conversationId)
+                pl.sinusoide.sinuschat.crypto.GroupKeyManager.clearGroup(context, conversationId)
+            }
             try { androidx.core.app.NotificationManagerCompat.from(context).cancel(conversationId.hashCode()) } catch (_: Exception) {}
             onDone?.invoke()
         }

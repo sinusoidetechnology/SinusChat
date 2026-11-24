@@ -30,6 +30,12 @@ fcm.senderId=
 
 `local.properties`, `google-services.json`, klucze do podpisywania i zbudowane pliki są w `.gitignore` i nigdy nie trafiają do repozytorium.
 
+## Kopie dla innych aplikacji
+
+Inne aplikacje (np. Export To Graphene) mogą poprosić o kopię zapasową przez `startActivityForResult` z akcją `pl.sinusoide.sinuschat.action.EXPORT_BACKUP`. SinusChat zawsze pokazuje, która aplikacja pyta, i wymaga potwierdzenia PIN-em, biometrią lub blokadą ekranu. Po zgodzie zwraca `RESULT_OK` z adresem `content://` pliku `SinusChat-rrrr-MM-dd-GGmm.sinuschat` (`application/octet-stream`, tylko odczyt) i dodatkiem `backup_key_id` (identyfikator klucza w hex). Opcjonalny dodatek `with_media` (boolean) ustawia domyślny wybór zdjęć i plików. Bez zgody wynik to `RESULT_CANCELED` z dodatkiem `error` (`cancelled`, `no_caller`, `not_ready`, `no_recovery_key`, `failed`). Plik jest zaszyfrowany kluczem odzyskiwania (12 słów), którego SinusChat nigdy nie przekazuje, i jest usuwany po 10 minutach lub przy następnym eksporcie.
+
+Plik `.sinuschat` otwarty przez `ACTION_VIEW` albo `ACTION_SEND` (`content://`) trafia do SinusChat. Przed konfiguracją aplikacji jest odkładany i po zalogowaniu w „Mam już konto — przenieś dane” SinusChat proponuje jego przywrócenie. W skonfigurowanej aplikacji kopię można tylko sprawdzić.
+
 ## Serwer
 
 Kod serwera, z którym łączy się aplikacja, jest w osobnym repozytorium: [SinusChat-server](https://github.com/sinusoidetechnology/SinusChat-server).
@@ -45,3 +51,5 @@ Błędy bezpieczeństwa zgłaszaj prywatnie, według [SECURITY.md](SECURITY.md).
 ## English
 
 SinusChat is an Android messenger with end-to-end encryption (Signal protocol) for every chat, call and group. Accounts use an e-mail address or no address at all. Build it with `./gradlew assembleDebug` (JDK 21, Android SDK and the NDK version from `app/build.gradle.kts`). Firebase push is optional; without the `fcm.*` values in `local.properties` the app runs in its "No Google" mode. Licensed under AGPL-3.0 with additional terms, see [LICENSE](LICENSE) and [NOTICE.md](NOTICE.md). Report security issues privately as described in [SECURITY.md](SECURITY.md).
+
+Other apps can request a backup with the `pl.sinusoide.sinuschat.action.EXPORT_BACKUP` activity action. After the user confirms (naming the calling app) and unlocks with PIN, biometrics or the screen lock, the result is `RESULT_OK` with a read-only `content://` URI of an encrypted `.sinuschat` file and the `backup_key_id` extra; otherwise `RESULT_CANCELED` with an `error` extra. The recovery key is never shared. Opening a `.sinuschat` file (`ACTION_VIEW`/`ACTION_SEND`) before setup offers to restore it after signing in with "I already have an account"; after setup the backup can only be checked.

@@ -468,11 +468,27 @@ object ApiClient {
             } else if (!resp.isSuccessful) { Log.e("ApiClient", "GET $path → ${resp.code}"); null }
             else resp.body?.string()
         }
-    } catch (e: Exception) { Log.e("ApiClient", "GET $path", e); null }
+    } catch (e: Exception) {
+        if (e is java.io.IOException) pl.sinusoide.sinuschat.util.NetState.serverFailed()
+        Log.e("ApiClient", "GET $path", e); null
+    }
 
     private fun noteServerClock(resp: okhttp3.Response) {
+        pl.sinusoide.sinuschat.util.NetState.serverReached()
         try { resp.headers.getDate("Date")?.let { ServerTime.syncCoarse(it.time) } } catch (_: Exception) {}
     }
+
+    fun getWithCode(path: String, context: Context): Pair<Int, String>? = try {
+        val req = Request.Builder()
+            .url("$BASE_URL$path")
+            .get()
+            .header("Authorization", "Bearer ${getToken(context) ?: ""}")
+            .build()
+        httpClient(context).newCall(req).execute().use { resp ->
+            noteServerClock(resp)
+            resp.code to (resp.body?.string() ?: "")
+        }
+    } catch (e: Exception) { Log.e("ApiClient", "GET $path", e); null }
 
     fun getObject(path: String, context: Context? = null, headers: Map<String, String>? = null): JSONObject? =
         getString(path, context, headers)

@@ -212,6 +212,8 @@ class SinusApp : Application() {
 
     private fun exempt(a: Activity): Boolean =
         a is ScreenLockActivity || a is SetupActivity || a is UpdateActivity ||
+        a is pl.sinusoide.sinuschat.backup.ExternalExportActivity ||
+        a is pl.sinusoide.sinuschat.backup.ExternalImportActivity ||
         a is pl.sinusoide.sinuschat.call.IncomingCallActivity ||
         a is pl.sinusoide.sinuschat.call.CallActivity ||
         a is pl.sinusoide.sinuschat.call.GroupCallActivity ||

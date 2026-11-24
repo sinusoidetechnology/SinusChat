@@ -305,6 +305,7 @@ object WebSocketManager {
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
+                pl.sinusoide.sinuschat.util.NetState.serverReached()
                 val msg = runCatching { JSONObject(text) }.getOrNull() ?: return
                 when (msg.optString("type")) {
                     "device_kicked" -> {
@@ -415,23 +416,12 @@ object WebSocketManager {
                             }
                         }
                     }
-                    "group_kicked" -> {
+                    "group_kicked", "group_deleted" -> {
                         val gId = msg.optString("groupId")
-                        if (gId.isNotEmpty()) {
-                            appCtx?.let { c ->
-                                AppExecutor.io {
-                                    try {
-                                        pl.sinusoide.sinuschat.data.SinusChatDatabase.getInstance(c)
-                                            .messageDao().clearConversation(gId)
-                                    } catch (_: Exception) {}
-                                    try { pl.sinusoide.sinuschat.util.MediaManager.clearConversationMedia(c, gId) } catch (_: Exception) {}
-                                    pl.sinusoide.sinuschat.crypto.GroupKeyManager.clearGroup(c, gId)
-                                    AppExecutor.main {
-                                        c.sendBroadcast(android.content.Intent("pl.sinusoide.sinuschat.REFRESH_CONVERSATIONS")
-                                            .setPackage(c.packageName))
-                                    }
-                                }
-                            }
+                        val reason = if (msg.optString("type") == "group_kicked") pl.sinusoide.sinuschat.util.GroupEnded.KICKED
+                            else pl.sinusoide.sinuschat.util.GroupEnded.DELETED
+                        if (gId.isNotEmpty()) appCtx?.let { c ->
+                            AppExecutor.io { pl.sinusoide.sinuschat.util.GroupEnded.mark(c, gId, reason) }
                         }
                     }
                     "call_answer", "call_ice", "call_reject", "call_end", "call_reoffer", "call_reanswer" -> {
